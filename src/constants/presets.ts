@@ -1411,5 +1411,555 @@ export const useCartStore = create<CartState>((set, get) => ({
         ]
       }
     ]
+  },
+  {
+    id: 'vue-pulse',
+    name: 'NuxtPulse Telemetry',
+    framework: 'Vue 3 + Nuxt 3 + Pinia',
+    tagline: 'Real-time telemetry monitor with Vue SFCs and Pinia reactive stores',
+    description: 'A modern Vue 3 application demonstrating Single File Components (<template> & <script setup>), Pinia stores, and Nuxt server handlers.',
+    files: [
+      {
+        id: 'vue-page-index',
+        path: 'pages/index.vue',
+        name: 'index.vue',
+        type: 'page',
+        lineCount: 56,
+        stack: 'vue',
+        previewType: 'meter',
+        screenLocation: {
+          xPercent: 0,
+          yPercent: 0,
+          widthPercent: 100,
+          heightPercent: 100,
+          zoneLabel: 'Vue 3 Live Dashboard'
+        },
+        blastRadius: {
+          score: 'high',
+          riskLabel: 'Root Vue Template',
+          description: 'Orchestrates child Vue components and hooks into Pinia telemetry store.',
+          impactedFiles: ['MetricGauge.vue', 'useTelemetry.ts'],
+          safeInvariants: ['Keep storeToRefs or reactive pinia bindings', 'Preserve template grid layout']
+        },
+        description: 'Main Vue 3 route rendering telemetry cards and reactive stream meters.',
+        whyAiMadeThis: 'Cursor scaffolded this Vue Single File Component to cleanly separate markup from script logic.',
+        imports: ['MetricGauge', 'useTelemetryStore', 'storeToRefs'],
+        exports: ['IndexPage'],
+        components: ['IndexPage'],
+        states: [
+          {
+            name: 'refreshInterval',
+            setter: 'setInterval',
+            initialValue: '3000',
+            purpose: 'Controls polling frequency for new telemetry events.',
+            modifiedBy: ['mounted hook']
+          }
+        ],
+        props: [],
+        hooks: ['useTelemetryStore'],
+        apiCalls: [],
+        renderedChildren: ['MetricGauge'],
+        events: [{ name: 'refresh', handler: 'store.refreshData', targetAction: 'Triggers Pinia store action' }],
+        code: `<template>
+  <div class="min-h-screen bg-[#010102] text-white p-8">
+    <header class="flex justify-between items-center mb-8 border-b border-[#23252a] pb-4">
+      <div>
+        <h1 class="text-xl font-bold font-mono">NuxtPulse Telemetry</h1>
+        <p class="text-xs text-[#8a8f98]">Vue 3 Reactive Dashboard</p>
+      </div>
+      <button @click="store.refreshData" class="px-4 py-2 bg-[#5e6ad2] text-white text-xs rounded-lg">
+        Poll Now
+      </button>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <MetricGauge :metrics="store.metrics" @refresh="store.refreshData" />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import MetricGauge from '~/components/MetricGauge.vue';
+import { useTelemetryStore } from '~/stores/useTelemetry';
+
+const store = useTelemetryStore();
+</script>`
+      },
+      {
+        id: 'vue-comp-gauge',
+        path: 'components/MetricGauge.vue',
+        name: 'MetricGauge.vue',
+        type: 'component',
+        lineCount: 48,
+        stack: 'vue',
+        previewType: 'meter',
+        screenLocation: {
+          xPercent: 10,
+          yPercent: 20,
+          widthPercent: 40,
+          heightPercent: 45,
+          zoneLabel: 'Vue Metric Gauge Tile'
+        },
+        blastRadius: {
+          score: 'low',
+          riskLabel: 'Low Impact (Leaf Vue SFC)',
+          description: 'Renders incoming metrics. Safe to modify CSS styling or SVG gauge charts.',
+          impactedFiles: [],
+          safeInvariants: ['Preserve defineProps<{ metrics: object }>()']
+        },
+        description: 'Single File Component rendering circular telemetry gauge with Vue scoped CSS.',
+        whyAiMadeThis: 'Encapsulates data visualization styling so parent templates remain concise.',
+        imports: ['defineProps', 'defineEmits'],
+        exports: ['MetricGauge'],
+        components: ['MetricGauge'],
+        states: [],
+        props: [{ name: 'metrics', type: 'object', required: true }],
+        hooks: [],
+        apiCalls: [],
+        renderedChildren: [],
+        events: [{ name: 'click', handler: 'emit("refresh")', targetAction: 'Emits refresh event to parent' }],
+        code: `<template>
+  <div class="bg-[#08090a] border border-[#23252a] rounded-xl p-6">
+    <div class="flex justify-between items-center mb-4">
+      <span class="text-xs font-mono text-[#8a8f98]">EVENT INGESTION RATE</span>
+      <span class="text-[10px] text-[#34d399] font-mono">Vue 3 Reactive</span>
+    </div>
+    <div class="text-3xl font-bold font-mono text-white">4,812 req/s</div>
+    <button @click="$emit('refresh')" class="mt-4 text-xs text-[#5e6ad2] hover:underline">
+      Force Health Check
+    </button>
+  </div>
+</template>
+
+<script setup lang="ts">
+defineProps<{ metrics?: Record<string, unknown> }>();
+defineEmits<{ (e: 'refresh'): void }>();
+</script>`
+      },
+      {
+        id: 'vue-store-pinia',
+        path: 'stores/useTelemetry.ts',
+        name: 'useTelemetry.ts',
+        type: 'store',
+        lineCount: 42,
+        stack: 'vue',
+        previewType: 'generic',
+        screenLocation: {
+          xPercent: 0,
+          yPercent: 0,
+          widthPercent: 0,
+          heightPercent: 0,
+          zoneLabel: 'Pinia Reactive State Store'
+        },
+        blastRadius: {
+          score: 'high',
+          riskLabel: 'Critical Pinia Store',
+          description: 'Global Pinia store managing telemetry cache and polling requests.',
+          impactedFiles: ['index.vue', 'MetricGauge.vue'],
+          safeInvariants: ['Do NOT remove refreshData action', 'Keep metrics reactive ref']
+        },
+        description: 'Pinia state management module providing reactive telemetry data across Vue components.',
+        whyAiMadeThis: 'Decouples HTTP fetch cycles from Vue presentation templates.',
+        imports: ['defineStore', 'ref'],
+        exports: ['useTelemetryStore'],
+        components: [],
+        states: [
+          {
+            name: 'metrics',
+            setter: 'metrics.value = ...',
+            initialValue: '{ rate: 4812, status: "healthy" }',
+            purpose: 'Holds current telemetry readings.',
+            modifiedBy: ['refreshData()']
+          }
+        ],
+        props: [],
+        hooks: [],
+        apiCalls: [{ endpoint: '/api/stats', method: 'GET', triggeredBy: 'refreshData()', purpose: 'Fetches cluster metrics' }],
+        renderedChildren: [],
+        events: [],
+        code: `import { defineStore } from 'pinia';
+import { ref } from 'vue';
+
+export const useTelemetryStore = defineStore('telemetry', () => {
+  const metrics = ref({ rate: 4812, latencyMs: 24, status: 'healthy' });
+
+  async function refreshData() {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    metrics.value = data;
+  }
+
+  return { metrics, refreshData };
+});`
+      },
+      {
+        id: 'vue-api-stats',
+        path: 'server/api/stats.ts',
+        name: 'stats.ts',
+        type: 'api',
+        lineCount: 32,
+        stack: 'vue',
+        previewType: 'api-schema',
+        screenLocation: {
+          xPercent: 0,
+          yPercent: 0,
+          widthPercent: 0,
+          heightPercent: 0,
+          zoneLabel: 'Nuxt 3 Server Handler'
+        },
+        blastRadius: {
+          score: 'moderate',
+          riskLabel: 'Server API Handler',
+          description: 'Nuxt 3 Nitro server route responding with JSON telemetry statistics.',
+          impactedFiles: ['useTelemetry.ts'],
+          safeInvariants: ['Return JSON must contain rate and latencyMs keys']
+        },
+        description: 'Nitro server event handler computing real-time server cluster metrics.',
+        whyAiMadeThis: 'Runs on serverless Nitro engine to access server infrastructure safely.',
+        imports: ['defineEventHandler'],
+        exports: ['default'],
+        components: [],
+        states: [],
+        props: [],
+        hooks: [],
+        apiCalls: [],
+        renderedChildren: [],
+        events: [],
+        code: `export default defineEventHandler((event) => {
+  return {
+    rate: Math.floor(4500 + Math.random() * 800),
+    latencyMs: 22,
+    status: 'healthy',
+    timestamp: Date.now()
+  };
+});`
+      }
+    ],
+    traces: [
+      {
+        id: 'trace-vue-poll',
+        title: 'Vue 3 Reactive Poll Flow',
+        triggerLabel: "User clicks 'Poll Now'",
+        description: 'Demonstrates Vue template @click event, Pinia action execution, and reactive DOM patch.',
+        steps: [
+          {
+            id: 'step-v1',
+            stepNumber: 1,
+            title: 'User fires @click in index.vue',
+            description: 'Vue event listener triggers store.refreshData() action.',
+            activeNodeId: 'vue-page-index',
+            targetNodeId: 'vue-store-pinia',
+            lineHighlight: 10,
+            storybook: {
+              chapterNumber: 1,
+              chapterTitle: 'Vue Event Trigger',
+              story: 'The visitor clicks Poll Now on the Vue 3 header.',
+              humanCausality: 'Vue binds the @click directive to the Pinia action.'
+            }
+          },
+          {
+            id: 'step-v2',
+            stepNumber: 2,
+            title: 'Pinia dispatches GET to /api/stats',
+            description: 'The store action queries the Nuxt Nitro server endpoint.',
+            activeNodeId: 'vue-store-pinia',
+            targetNodeId: 'vue-api-stats',
+            lineHighlight: 8,
+            storybook: {
+              chapterNumber: 2,
+              chapterTitle: 'Nitro Server Query',
+              story: 'The Pinia store dispatches an asynchronous fetch to the backend server.',
+              humanCausality: 'Server computes cluster telemetry and responds with fresh JSON.'
+            }
+          },
+          {
+            id: 'step-v3',
+            stepNumber: 3,
+            title: 'Pinia ref updates & MetricGauge re-renders',
+            description: 'metrics.value mutates, automatically updating subscriber components via Vue reactivity.',
+            activeNodeId: 'vue-store-pinia',
+            targetNodeId: 'vue-comp-gauge',
+            lineHighlight: 10,
+            storybook: {
+              chapterNumber: 3,
+              chapterTitle: 'Reactive DOM Patch',
+              story: 'The Vue reactive ref updates, and the metric gauge repaints automatically.',
+              humanCausality: 'Vue 3 fine-grained reactivity patches only the changed number in the DOM.'
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    id: 'fastapi-agent',
+    name: 'AgentCore Python AI Service',
+    framework: 'Python 3.12 + FastAPI + Pydantic',
+    tagline: 'Asynchronous Python microservice for AI agents, vector search, and tool execution',
+    description: 'A pure Python backend service demonstrating FastAPI routes, Pydantic schemas, and vector retrieval without any frontend HTML.',
+    files: [
+      {
+        id: 'py-main',
+        path: 'main.py',
+        name: 'main.py',
+        type: 'api',
+        lineCount: 52,
+        stack: 'python',
+        previewType: 'api-schema',
+        screenLocation: {
+          xPercent: 0,
+          yPercent: 0,
+          widthPercent: 0,
+          heightPercent: 0,
+          zoneLabel: 'FastAPI Gateway Application'
+        },
+        blastRadius: {
+          score: 'high',
+          riskLabel: 'FastAPI Application Root',
+          description: 'Initializes the FastAPI application, mounts CORS middleware, and registers sub-routers.',
+          impactedFiles: ['agent.py', 'schemas.py'],
+          safeInvariants: ['Preserve app = FastAPI() instance', 'Keep include_router(agent_router)']
+        },
+        description: 'FastAPI application entrypoint exposing healthcheck and mounting agent workflows.',
+        whyAiMadeThis: 'Serves as the ASGI HTTP server root for Uvicorn.',
+        imports: ['FastAPI', 'CORSMiddleware', 'agent_router'],
+        exports: ['app'],
+        components: ['app'],
+        states: [],
+        props: [],
+        hooks: [],
+        apiCalls: [{ endpoint: '/v1/agent/run', method: 'POST', triggeredBy: 'Client API call', purpose: 'Executes autonomous agent' }],
+        renderedChildren: [],
+        events: [],
+        code: `from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from routers.agent import router as agent_router
+
+app = FastAPI(title="AgentCore AI API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(agent_router, prefix="/v1")
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "service": "agentcore"}`
+      },
+      {
+        id: 'py-router-agent',
+        path: 'routers/agent.py',
+        name: 'agent.py',
+        type: 'api',
+        lineCount: 48,
+        stack: 'python',
+        previewType: 'api-schema',
+        screenLocation: {
+          xPercent: 0,
+          yPercent: 0,
+          widthPercent: 0,
+          heightPercent: 0,
+          zoneLabel: 'Agent Router Controller'
+        },
+        blastRadius: {
+          score: 'high',
+          riskLabel: 'Core Agent Execution Route',
+          description: 'Handles POST /v1/agent/run, validates Pydantic request models, and coordinates retrieval.',
+          impactedFiles: ['retriever.py', 'schemas.py'],
+          safeInvariants: ['Maintain response_model=AgentResponse contract']
+        },
+        description: 'FastAPI APIRouter coordinating user queries, RAG document retrieval, and LLM inference.',
+        whyAiMadeThis: 'Isolates AI routing logic from main server startup configuration.',
+        imports: ['APIRouter', 'AgentQuery', 'AgentResponse', 'query_vector_store'],
+        exports: ['router'],
+        components: ['run_agent'],
+        states: [],
+        props: [],
+        hooks: [],
+        apiCalls: [],
+        renderedChildren: [],
+        events: [],
+        code: `from fastapi import APIRouter, HTTPException
+from models.schemas import AgentQuery, AgentResponse
+from services.retriever import query_vector_store
+
+router = APIRouter(tags=["Agents"])
+
+@router.post("/agent/run", response_model=AgentResponse)
+async def run_agent(query: AgentQuery):
+    if not query.prompt:
+        raise HTTPException(status_code=400, detail="Prompt required")
+
+    docs = await query_vector_store(query.prompt, top_k=3)
+    return AgentResponse(
+        answer="Synthesized plan from retrieved knowledge",
+        sources=docs,
+        tokens_used=342
+    )`
+      },
+      {
+        id: 'py-service-retriever',
+        path: 'services/retriever.py',
+        name: 'retriever.py',
+        type: 'hook',
+        lineCount: 38,
+        stack: 'python',
+        previewType: 'python-service',
+        screenLocation: {
+          xPercent: 0,
+          yPercent: 0,
+          widthPercent: 0,
+          heightPercent: 0,
+          zoneLabel: 'ChromaDB Vector Retriever'
+        },
+        blastRadius: {
+          score: 'moderate',
+          riskLabel: 'Database Retrieval Engine',
+          description: 'Performs semantic cosine similarity search against local embedding indices.',
+          impactedFiles: ['agent.py'],
+          safeInvariants: ['Must return list of string documents']
+        },
+        description: 'Vector store similarity engine retrieving relevant context chunks for the agent.',
+        whyAiMadeThis: 'Isolates embedding calculations from web controllers.',
+        imports: ['asyncio'],
+        exports: ['query_vector_store'],
+        components: ['query_vector_store'],
+        states: [],
+        props: [],
+        hooks: [],
+        apiCalls: [],
+        renderedChildren: [],
+        events: [],
+        code: `import asyncio
+
+async def query_vector_store(query: str, top_k: int = 3) -> list[str]:
+    # Simulated vector cosine similarity search
+    await asyncio.sleep(0.18)
+    return [
+        f"Doc chunk matching '{query[:16]}...'",
+        "Architecture specification: Section 4",
+        "API rate limit policies"
+    ]`
+      },
+      {
+        id: 'py-models-schemas',
+        path: 'models/schemas.py',
+        name: 'schemas.py',
+        type: 'store',
+        lineCount: 28,
+        stack: 'python',
+        previewType: 'api-schema',
+        screenLocation: {
+          xPercent: 0,
+          yPercent: 0,
+          widthPercent: 0,
+          heightPercent: 0,
+          zoneLabel: 'Pydantic Contract Definitions'
+        },
+        blastRadius: {
+          score: 'high',
+          riskLabel: 'Data Contract Models',
+          description: 'Defines runtime type validation schemas for API inputs and outputs.',
+          impactedFiles: ['agent.py'],
+          safeInvariants: ['Keep AgentQuery.prompt and AgentResponse.answer fields']
+        },
+        description: 'Pydantic BaseModel declarations establishing OpenAPI documentation contracts.',
+        whyAiMadeThis: 'Guarantees type-safety and JSON payload validation for API consumers.',
+        imports: ['BaseModel', 'Field'],
+        exports: ['AgentQuery', 'AgentResponse'],
+        components: ['AgentQuery', 'AgentResponse'],
+        states: [],
+        props: [],
+        hooks: [],
+        apiCalls: [],
+        renderedChildren: [],
+        events: [],
+        code: `from pydantic import BaseModel, Field
+
+class AgentQuery(BaseModel):
+    prompt: str = Field(..., description="User instruction for the agent")
+    max_tokens: int = Field(1024, ge=1)
+
+class AgentResponse(BaseModel):
+    answer: str
+    sources: list[str]
+    tokens_used: int`
+      }
+    ],
+    traces: [
+      {
+        id: 'trace-py-agent',
+        title: 'Python Agent Query Execution',
+        triggerLabel: "POST /v1/agent/run received",
+        description: 'Follows an incoming JSON payload through Pydantic validation, vector retrieval, and output synthesis.',
+        steps: [
+          {
+            id: 'step-p1',
+            stepNumber: 1,
+            title: 'FastAPI receives HTTP POST in main.py',
+            description: 'Uvicorn ASGI server receives incoming request and routes to agent router.',
+            activeNodeId: 'py-main',
+            targetNodeId: 'py-router-agent',
+            lineHighlight: 16,
+            storybook: {
+              chapterNumber: 1,
+              chapterTitle: 'Request Ingestion',
+              story: 'A client sends a query to the Python microservice gateway.',
+              humanCausality: 'FastAPI matches the route and passes the payload to the agent router.'
+            }
+          },
+          {
+            id: 'step-p2',
+            stepNumber: 2,
+            title: 'Pydantic validates AgentQuery model',
+            description: 'Schema validates prompt string and sets default token thresholds.',
+            activeNodeId: 'py-router-agent',
+            targetNodeId: 'py-models-schemas',
+            lineHighlight: 9,
+            storybook: {
+              chapterNumber: 2,
+              chapterTitle: 'Schema Validation',
+              story: 'Pydantic inspects the request to make sure required keys exist.',
+              humanCausality: 'Invalid JSON is rejected immediately with HTTP 422 before running expensive code.'
+            }
+          },
+          {
+            id: 'step-p3',
+            stepNumber: 3,
+            title: 'Vector Store executes semantic search',
+            description: 'retriever.py executes cosine similarity across vector embeddings.',
+            activeNodeId: 'py-router-agent',
+            targetNodeId: 'py-service-retriever',
+            lineHighlight: 13,
+            storybook: {
+              chapterNumber: 3,
+              chapterTitle: 'Vector RAG Search',
+              story: 'The service retrieves the top 3 most relevant documentation chunks.',
+              humanCausality: 'The agent grounds its answer in real context rather than hallucinating.'
+            }
+          },
+          {
+            id: 'step-p4',
+            stepNumber: 4,
+            title: 'Synthesizes AgentResponse output',
+            description: 'FastAPI serializes the response model to JSON and returns 200 OK.',
+            activeNodeId: 'py-router-agent',
+            targetNodeId: 'py-main',
+            lineHighlight: 14,
+            storybook: {
+              chapterNumber: 4,
+              chapterTitle: 'JSON Response Delivery',
+              story: 'The service packages the answer and token counts and sends it back to the client.',
+              humanCausality: 'The HTTP connection completes with 200 OK.'
+            }
+          }
+        ]
+      }
+    ]
   }
 ];

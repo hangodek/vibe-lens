@@ -7,6 +7,7 @@ import { RealBillingModal } from '../real-previews/RealBillingModal';
 import { RealProductCard } from '../real-previews/RealProductCard';
 import { RealCartDrawer } from '../real-previews/RealCartDrawer';
 import { RealApiTerminal } from '../real-previews/RealApiTerminal';
+import { RealApiSchemaCard } from '../real-previews/RealApiSchemaCard';
 
 interface VirtualViewportLensProps {
   previewType?: MiniPreviewType;
@@ -33,6 +34,12 @@ export function VirtualViewportLens({ previewType }: VirtualViewportLensProps) {
         {previewType === 'product-card' && <RealProductCard />}
         {previewType === 'cart-drawer' && <RealCartDrawer />}
         {previewType === 'api-terminal' && <RealApiTerminal />}
+        {(previewType === 'api-schema' || previewType === 'python-service') && (
+          <RealApiSchemaCard />
+        )}
+        {(previewType === 'vue-template' || previewType === 'svelte-runes') && (
+          <RealPromptBar initialPrompt="Reactive Template Binding · Real Single File Component" />
+        )}
         {(!previewType || previewType === 'generic') && (
           <div className="p-4 bg-[#08090a] border border-[#23252a] rounded-xl text-xs font-mono text-[#8a8f98]">
             <div className="h-4 w-40 bg-[#1c1d22] rounded mb-3" />
@@ -45,7 +52,7 @@ export function VirtualViewportLens({ previewType }: VirtualViewportLensProps) {
         )}
       </div>
 
-      {/* Top Fold Bottom Gradient Fade (Prevents layout butchering on big components) */}
+      {/* Top Fold Bottom Gradient Fade */}
       <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[#08090a] via-[#08090a]/70 to-transparent pointer-events-none flex items-end justify-center pb-0.5">
         <span className="text-[8px] font-mono text-[#62666d] uppercase tracking-wider">
           Top-Fold Lens · Scaled

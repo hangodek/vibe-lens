@@ -9,6 +9,15 @@ export type NodeType =
 
 export type LayerMode = 'screen' | 'data' | 'trace';
 
+export type StackType = 
+  | 'react'
+  | 'vue'
+  | 'svelte'
+  | 'python'
+  | 'go'
+  | 'html'
+  | 'generic';
+
 export type MiniPreviewType =
   | 'prompt-bar'
   | 'canvas'
@@ -18,6 +27,10 @@ export type MiniPreviewType =
   | 'cart-drawer'
   | 'product-card'
   | 'api-terminal'
+  | 'api-schema'
+  | 'vue-template'
+  | 'svelte-runes'
+  | 'python-service'
   | 'generic';
 
 export interface BlastRadius {
@@ -58,6 +71,13 @@ export interface ApiCall {
   purpose: string;
 }
 
+export interface ApiContract {
+  endpoint: string;
+  method: string;
+  requestSchema?: string;
+  responseSchema?: string;
+}
+
 export interface ParsedCodeFile {
   id: string;
   path: string;
@@ -77,6 +97,8 @@ export interface ParsedCodeFile {
   renderedChildren: string[];
   events: { name: string; handler: string; targetAction: string }[];
   previewType?: MiniPreviewType;
+  stack?: StackType;
+  apiContract?: ApiContract;
   blastRadius?: BlastRadius;
   screenLocation?: ScreenLocation;
 }
