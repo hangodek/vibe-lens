@@ -86,4 +86,32 @@ describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
     }
     expect(collisions).toBe(0);
   });
+
+  it('populates rich architectural data on nodes and edges with dataPassed', () => {
+    const files = [
+      parseSourceCode('web/templates/auth/login.html', '<form action="/login">'),
+      parseSourceCode('internal/auth/handler.go', 'func Login() {}'),
+    ];
+    files[0].description = 'Renders login form with email & password fields.';
+    files[1].description = 'Receives POST /login and authenticates user credentials.';
+
+    const aiConnections = [
+      {
+        from: 'web/templates/auth/login.html',
+        to: 'internal/auth/handler.go',
+        whatHappens: 'Visitor submits email & password credentials',
+        dataPassed: 'POST /login (email, password)',
+        codeSnippet: 'http.HandleFunc("/login", h.Login)',
+      },
+    ];
+
+    const { nodes, edges } = calculateLayout(files, 'screen', undefined, 0, aiConnections);
+
+    expect(nodes.length).toBe(2);
+    expect(nodes[0].plainEnglish).toBe('Renders login form with email & password fields.');
+    expect(edges.length).toBe(1);
+    expect(edges[0].dataPassed).toBe('POST /login (email, password)');
+    expect(edges[0].whatHappens).toContain('Visitor submits email & password');
+    expect(edges[0].codeSnippet).toContain('HandleFunc');
+  });
 });

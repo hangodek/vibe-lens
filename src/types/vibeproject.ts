@@ -12,13 +12,22 @@ export interface VibeDataStructure {
   fields: VibeDataField[];
 }
 
+export interface VibeMasterConnection {
+  from: string;         // source file path e.g. "web/templates/auth/login.html"
+  to: string;           // target file path e.g. "internal/auth/handler.go"
+  whatHappens: string;  // e.g. "Visitor submits email and password credentials"
+  dataPassed: string;   // e.g. "POST /login (email, password form payload)"
+  codeSnippet?: string; // Key code call e.g. "authService.Authenticate(email, password)"
+}
+
 export interface VibeMasterFile {
   path: string;
   name: string;
   role: PipelineRole;
-  plainEnglish: string;
-  inbound: string;
-  outbound: string;
+  plainEnglish: string; // What this specific file does in 1-2 clear human sentences
+  inbound: string;      // What enters: e.g. "HTTP POST /login with form credentials"
+  outbound: string;     // What exits: e.g. "Calls authService.Login(), sets session cookie"
+  routes?: string[];    // Handled or requested endpoints e.g. ["GET /profile", "POST /login"]
   calls: string[];
   calledBy: string[];
   dataShape: VibeDataStructure[];
@@ -61,6 +70,7 @@ export interface VibeLensProjectMaster {
   analyzedAt: string;
   analyzer: string; // 'agy' | 'opencode' | 'claude' | 'ollama' | 'openai' | 'groq' | 'gemini'
   files: Record<string, VibeMasterFile>;
+  connections: VibeMasterConnection[];
   journeys: VibeMasterJourney[];
   workspaces: VibeMasterWorkspace[];
 }

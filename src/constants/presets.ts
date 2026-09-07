@@ -615,6 +615,36 @@ export async function POST(req: NextRequest) {
           }
         ]
       }
+    ],
+    connections: [
+      {
+        from: 'components/PromptBar.tsx',
+        to: 'app/page.tsx',
+        whatHappens: 'User enters prompt and model preferences and fires generate event',
+        dataPassed: 'onGenerate(promptText, modelId)',
+        codeSnippet: 'onGenerate(promptText, selectedModel)',
+      },
+      {
+        from: 'app/page.tsx',
+        to: 'hooks/useImageGeneration.ts',
+        whatHappens: 'Studio page delegates request to asynchronous generation hook',
+        dataPassed: 'generate(prompt, model)',
+        codeSnippet: 'const { generate, currentJob } = useImageGeneration()',
+      },
+      {
+        from: 'hooks/useImageGeneration.ts',
+        to: 'components/CanvasViewer.tsx',
+        whatHappens: 'Hook feeds live image decode state and progress into viewport',
+        dataPassed: 'currentJob & isGenerating status',
+        codeSnippet: '<CanvasViewer currentJob={currentJob} isGenerating={isGenerating} />',
+      },
+      {
+        from: 'hooks/useImageGeneration.ts',
+        to: 'components/GalleryFeed.tsx',
+        whatHappens: 'Finished image artwork is appended to the recent history feed',
+        dataPassed: 'Job history list & timestamps',
+        codeSnippet: '<GalleryFeed history={history} />',
+      },
     ]
   },
   {

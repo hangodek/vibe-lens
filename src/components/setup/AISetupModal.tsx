@@ -10,7 +10,7 @@ interface AISetupModalProps {
 
 export function AISetupModal({ isOpen, onClose, onSaved }: AISetupModalProps) {
   const [activeTab, setActiveTab] = useState<'cli' | 'cloud'>('cli');
-  const [selectedTool, setSelectedTool] = useState<'agy' | 'opencode' | 'claude'>('agy');
+  const [selectedTool, setSelectedTool] = useState<'agy' | 'opencode' | 'claude'>('claude');
   const [cloudProvider, setCloudProvider] = useState<'openai' | 'anthropic' | 'groq' | 'gemini'>('groq');
   const [cloudKey, setCloudKey] = useState('');
   const [companionStatus, setCompanionStatus] = useState<{
@@ -99,16 +99,16 @@ export function AISetupModal({ isOpen, onClose, onSaved }: AISetupModalProps) {
           <div className="space-y-3 mb-4">
             <div className="p-3 bg-[#121316] border border-[#23252a] rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-mono text-[#8a8f98]">Companion Server:</span>
+                <span className="text-xs font-mono text-[#8a8f98]">AI Engine Bridge:</span>
                 <span className="flex items-center gap-1.5 text-xs font-mono">
                   <span className={`w-2 h-2 rounded-full ${companionStatus.online ? 'bg-[#34d399]' : 'bg-[#f87171]'}`} />
                   <span className={companionStatus.online ? 'text-[#34d399]' : 'text-[#f87171]'}>
-                    {companionStatus.online ? 'Online (:4242)' : 'Offline (run: bun run server)'}
+                    {companionStatus.online ? 'Active (Native Vite Server)' : 'Offline'}
                   </span>
                 </span>
               </div>
               <p className="text-[11px] text-[#62666d]">
-                The companion server bridges your browser with local CLI tools installed on your terminal.
+                Zero-setup local CLI bridge. Automatically uses whichever tool is ready on your system.
               </p>
             </div>
 
@@ -116,9 +116,9 @@ export function AISetupModal({ isOpen, onClose, onSaved }: AISetupModalProps) {
               <label className="text-xs font-mono text-[#d0d6e0]">Select Active CLI Agent</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
+                  { id: 'claude', label: 'claude', name: 'Claude Code (Ready)' },
                   { id: 'agy', label: 'agy', name: 'Antigravity CLI' },
                   { id: 'opencode', label: 'opencode', name: 'OpenCode CLI' },
-                  { id: 'claude', label: 'claude', name: 'Claude Code' },
                 ].map((t) => {
                   const detected = companionStatus.tools[t.id as keyof typeof companionStatus.tools];
                   const isSelected = selectedTool === t.id;

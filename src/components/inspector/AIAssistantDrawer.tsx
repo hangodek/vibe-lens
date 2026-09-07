@@ -54,18 +54,38 @@ export function AIAssistantDrawer({
     const cliTool = localStorage.getItem('vibe_cli_tool') || 'agy';
     const activeProvider = localStorage.getItem('vibe_ai_provider') || 'local_cli';
 
-    // 1. Check Local CLI Agent via Companion Server
+    // 1. Check Local CLI Agent via Embedded Vite / Companion Server
     if (activeProvider === 'local_cli') {
+      const askPayload = JSON.stringify({
+        tool: cliTool,
+        file: file.path,
+        question: queryText,
+        code: file.code.slice(0, 4000),
+      });
+
+      // Try embedded Vite endpoint first
+      try {
+        const res = await fetch('/api/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: askPayload,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.reply) {
+            setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
+            setIsThinking(false);
+            return;
+          }
+        }
+      } catch {}
+
+      // Fallback to standalone companion port if needed
       try {
         const res = await fetch(`${localUrl}/api/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tool: cliTool,
-            file: file.path,
-            question: queryText,
-            code: file.code.slice(0, 4000),
-          }),
+          body: askPayload,
         });
         if (res.ok) {
           const data = await res.json();
@@ -76,7 +96,7 @@ export function AIAssistantDrawer({
           }
         }
       } catch (err) {
-        console.warn('Companion server not reachable, trying cloud/fallback', err);
+        console.warn('Local CLI not reachable, trying cloud/fallback', err);
       }
     }
 

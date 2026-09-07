@@ -11,7 +11,7 @@ export function getStoredAIConfig(): AIConfig {
     return { provider: 'local_cli', cliTool: 'agy' };
   }
   const provider = (localStorage.getItem('vibe_ai_provider') || 'local_cli') as AIConfig['provider'];
-  const cliTool = (localStorage.getItem('vibe_cli_tool') || 'agy') as AIConfig['cliTool'];
+  const cliTool = (localStorage.getItem('vibe_cli_tool') || 'claude') as AIConfig['cliTool'];
   const apiKey = localStorage.getItem(`vibe_key_${provider}`) || '';
   const baseUrl = localStorage.getItem('vibe_local_url') || 'http://localhost:4242';
   const model = localStorage.getItem('vibe_local_model') || '';
@@ -19,24 +19,52 @@ export function getStoredAIConfig(): AIConfig {
   return { provider, cliTool, apiKey, baseUrl, model };
 }
 
-export async function checkCompanionHealth(url = 'http://localhost:4242'): Promise<{
+export async function checkCompanionHealth(fallbackUrl = 'http://localhost:4242'): Promise<{
   online: boolean;
   tools: { agy: boolean; opencode: boolean; claude: boolean; ollama: boolean };
 }> {
+  // Try embedded Vite dev server API first
   try {
-    const res = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(2000) });
-    if (!res.ok) return { online: false, tools: { agy: false, opencode: false, claude: false, ollama: false } };
-    const data = await res.json();
-    return { online: true, tools: data.tools || {} };
-  } catch {
-    return { online: false, tools: { agy: false, opencode: false, claude: false, ollama: false } };
-  }
+    const res = await fetch('/api/health', { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      const data = await res.json();
+      return { online: true, tools: data.tools || {} };
+    }
+  } catch {}
+
+  // Fallback to standalone port 4242 if running separately
+  try {
+    const res = await fetch(`${fallbackUrl}/api/health`, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      const data = await res.json();
+      return { online: true, tools: data.tools || {} };
+    }
+  } catch {}
+
+  return { online: false, tools: { agy: false, opencode: false, claude: false, ollama: false } };
 }
 
 export async function executeAIPrompt(prompt: string, config?: AIConfig): Promise<string> {
   const cfg = config || getStoredAIConfig();
 
   if (cfg.provider === 'local_cli') {
+    // 1. Try Vite embedded server first (/api/analyze)
+    try {
+      const embeddedRes = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool: cfg.cliTool || 'agy',
+          prompt,
+        }),
+      });
+      if (embeddedRes.ok) {
+        const data = await embeddedRes.json();
+        if (data.output) return data.output;
+      }
+    } catch {}
+
+    // 2. Try standalone port 4242 companion server
     const serverUrl = cfg.baseUrl || 'http://localhost:4242';
     const res = await fetch(`${serverUrl}/api/analyze`, {
       method: 'POST',

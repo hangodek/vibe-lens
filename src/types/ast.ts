@@ -121,6 +121,8 @@ export interface ParsedCodeFile {
   apiContract?: ApiContract;
   blastRadius?: BlastRadius;
   screenLocation?: ScreenLocation;
+  routes?: string[];
+  dataEntities?: string[];
 }
 
 export interface StorybookNarrative {
@@ -159,4 +161,11 @@ export interface VibeProject {
   description: string;
   files: ParsedCodeFile[];
   traces: ExecutionTrace[];
+  connections?: Array<{
+    from: string;
+    to: string;
+    whatHappens: string;
+    dataPassed: string;
+    codeSnippet?: string;
+  }>;
 }

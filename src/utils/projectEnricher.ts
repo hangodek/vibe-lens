@@ -51,6 +51,8 @@ export function enrichProjectWithMaster(
         ],
       },
       states: states.length > 0 ? states : file.states,
+      routes: masterFile.routes && masterFile.routes.length > 0 ? masterFile.routes : file.routes,
+      dataEntities: masterFile.dataShape?.map((s) => s.name) || file.dataEntities,
     };
   });
 
@@ -96,5 +98,6 @@ export function enrichProjectWithMaster(
     description: master.summary || project.description,
     files: enrichedFiles,
     traces: traces.length > 0 ? traces : project.traces,
+    connections: master.connections || [],
   };
 }

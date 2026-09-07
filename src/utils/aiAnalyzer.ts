@@ -1,4 +1,10 @@
-import type { VibeLensProjectMaster, VibeMasterFile, VibeMasterJourney, VibeMasterWorkspace } from '../types/vibeproject';
+import type {
+  VibeLensProjectMaster,
+  VibeMasterFile,
+  VibeMasterJourney,
+  VibeMasterWorkspace,
+  VibeMasterConnection,
+} from '../types/vibeproject';
 import { executeAIPrompt, extractJsonFromResponse } from './aiClient';
 import { loadProjectMaster, saveProjectMaster } from './aiStorage';
 
@@ -14,97 +20,77 @@ export interface AnalysisProgress {
   percent: number;
 }
 
-function chunkFiles(files: RawFile[], maxChunkChars = 28000): RawFile[][] {
-  const chunks: RawFile[][] = [];
-  let currentChunk: RawFile[] = [];
-  let currentSize = 0;
+function buildUnifiedPrompt(files: RawFile[], projectName: string): string {
+  const fileExcerpts = files
+    .map((f) => `=== FILE: ${f.path} (${f.name}) ===\n${f.code.slice(0, 3000)}`)
+    .join('\n\n');
 
-  for (const file of files) {
-    const fileSize = file.code.length;
-    if (currentChunk.length > 0 && (currentSize + fileSize > maxChunkChars || currentChunk.length >= 15)) {
-      chunks.push(currentChunk);
-      currentChunk = [file];
-      currentSize = fileSize;
-    } else {
-      currentChunk.push(file);
-      currentSize += fileSize;
-    }
-  }
+  return `You are an elite Lead Software Architect explaining a codebase to a vibe coder.
+Analyze this codebase for project "${projectName}".
 
-  if (currentChunk.length > 0) chunks.push(currentChunk);
-  return chunks;
-}
-
-function buildChunkPrompt(chunk: RawFile[], allPaths: string[]): string {
-  const filesPayload = chunk.map(f => `--- FILE: ${f.path} (${f.name}) ---\n${f.code.slice(0, 3500)}`).join('\n\n');
-
-  return `You are a Principal Software Architect. Analyze the following source files from a codebase.
-All files in project: [${allPaths.slice(0, 50).join(', ')}]
-
-Return ONLY valid JSON (no markdown, no extra commentary) matching this schema:
+Return ONLY a valid JSON object matching this exact schema:
 {
+  "stack": "e.g. Go 1.22 + SSR HTML Templates + Vanilla JS",
+  "summary": "Clear, concise 1-2 sentence explanation of what this application does and how it runs.",
   "files": [
     {
       "path": "exact file path",
       "name": "filename",
-      "role": "view" | "controller" | "service" | "storage" | "gateway" | "guard" | "utility" | "script",
-      "plainEnglish": "Concise 1-2 sentence description explaining what THIS specific file actually does, its functions, and purpose.",
-      "inbound": "What triggers or passes data into this file",
-      "outbound": "What this file calls, outputs, or writes to",
-      "calls": ["function or file calls"],
-      "calledBy": ["callers"],
+      "role": "view" | "controller" | "service" | "storage" | "gateway" | "guard" | "utility",
+      "plainEnglish": "What THIS specific file does in simple, human English.",
+      "inbound": "What enters this file (e.g. HTTP POST /login with form credentials)",
+      "outbound": "What this file produces or calls (e.g. Calls authService.Login(), sets cookie)",
+      "routes": ["GET /profile", "POST /login"],
       "dataShape": [
-        { "name": "StructOrClassName", "kind": "struct"|"class"|"interface"|"state"|"table", "fields": [{ "name": "fieldName", "type": "string" }] }
+        {
+          "name": "User",
+          "kind": "struct",
+          "fields": [{ "name": "Email", "type": "string", "purpose": "User email address" }]
+        }
       ],
       "blastRadius": {
         "score": "low" | "moderate" | "high",
-        "riskLabel": "e.g. Core Authentication Service",
-        "safeInvariants": ["Key invariant 1", "Key invariant 2"],
+        "riskLabel": "e.g. Core Auth Controller",
+        "safeInvariants": ["Keep existing HTTP handler signatures intact"],
         "impactedFiles": ["dependent file paths"]
       }
+    }
+  ],
+  "connections": [
+    {
+      "from": "source file path (e.g. web/templates/auth/login.html)",
+      "to": "target file path (e.g. internal/auth/handler.go)",
+      "whatHappens": "Visitor submits login form with email & password",
+      "dataPassed": "POST /login (email, password payload)",
+      "codeSnippet": "http.HandleFunc(\\"POST /login\\", h.Login)"
+    }
+  ],
+  "journeys": [
+    {
+      "id": "journey-1",
+      "title": "User Login & Session Flow",
+      "description": "Visitor logs in from HTML form down to database query.",
+      "steps": [
+        { "file": "web/templates/auth/login.html", "action": "User submits credentials" },
+        { "file": "internal/auth/handler.go", "action": "Validates request and calls service" },
+        { "file": "internal/auth/service.go", "action": "Verifies bcrypt password hash" },
+        { "file": "internal/auth/repository.go", "action": "SELECT * FROM users WHERE email = $1" }
+      ]
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "auth",
+      "name": "Authentication",
+      "description": "Login, registration, and session cookies",
+      "files": ["file paths"],
+      "icon": "ShieldCheck"
     }
   ]
 }
 
 SOURCE FILES:
-${filesPayload}`;
-}
-
-function buildSynthesisPrompt(projectName: string, filesSummary: Record<string, VibeMasterFile>): string {
-  const summaryList = Object.values(filesSummary).map(f => `- ${f.path} [role: ${f.role}]: ${f.plainEnglish}`).join('\n');
-
-  return `You are a Principal Software Architect. Synthesize the overall architecture, dynamic feature workspaces, and end-to-end user journeys for "${projectName}".
-
-Return ONLY valid JSON matching this schema:
-{
-  "stack": "e.g. Go 1.22 + SSR HTML Templates + Vanilla JS",
-  "summary": "High-level architectural overview of what this application does and how layers connect.",
-  "workspaces": [
-    {
-      "id": "workspace-slug",
-      "name": "Workspace Title (e.g. Authentication, Product Catalog, Order & Checkout)",
-      "description": "Domain purpose",
-      "files": ["file paths belonging to this subsystem"],
-      "icon": "ShieldCheck" | "Boxes" | "ShoppingCart" | "Server" | "LayoutGrid"
-    }
-  ],
-  "journeys": [
-    {
-      "id": "journey-id",
-      "title": "User Registration Journey",
-      "description": "How a visitor signs up from HTML form down to database commit.",
-      "steps": [
-        { "file": "path/to/file.html", "action": "User submits registration credentials", "dataTransformed": "Form POST payload" },
-        { "file": "path/to/handler.go", "action": "Validates input and dispatches to auth service" },
-        { "file": "path/to/service.go", "action": "Hashes password with bcrypt" },
-        { "file": "path/to/repository.go", "action": "Inserts user record into PostgreSQL" }
-      ]
-    }
-  ]
-}
-
-FILES IN PROJECT:
-${summaryList}`;
+${fileExcerpts}`;
 }
 
 export async function analyzeProjectWithAI(
@@ -116,84 +102,78 @@ export async function analyzeProjectWithAI(
 ): Promise<VibeLensProjectMaster> {
   if (!forceRescan) {
     const cached = await loadProjectMaster(projectId);
-    if (cached) {
-      if (onProgress) onProgress({ message: 'Loaded from local cache', percent: 100 });
+    if (cached && Object.keys(cached.files || {}).length > 0) {
+      if (onProgress) onProgress({ message: 'Loaded verified mental model from cache', percent: 100 });
       return cached;
     }
   }
 
-  const allPaths = rawFiles.map(f => f.path);
-  const chunks = chunkFiles(rawFiles);
-  const analyzedFiles: Record<string, VibeMasterFile> = {};
+  if (onProgress) onProgress({ message: `Reading and assembling ${rawFiles.length} files...`, percent: 15 });
 
-  if (onProgress) onProgress({ message: `Preparing AI analysis for ${rawFiles.length} files...`, percent: 5 });
+  // Prioritize meaningful source files up to 25 files for single-pass analysis
+  const targetFiles = rawFiles.slice(0, 25);
+  const prompt = buildUnifiedPrompt(targetFiles, projectName);
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    const percent = Math.round(10 + (i / chunks.length) * 60);
-    const chunkNames = chunk.slice(0, 3).map(f => f.name).join(', ') + (chunk.length > 3 ? '...' : '');
+  if (onProgress) onProgress({ message: `AI agent analyzing architecture and data flows...`, percent: 45 });
 
-    if (onProgress) {
-      onProgress({
-        message: `Scanning package chunk ${i + 1}/${chunks.length}: ${chunkNames}`,
-        percent,
-      });
-    }
+  const rawResponse = await executeAIPrompt(prompt);
+  if (onProgress) onProgress({ message: 'Parsing architectural connections and data flows...', percent: 80 });
 
-    try {
-      const prompt = buildChunkPrompt(chunk, allPaths);
-      const rawResponse = await executeAIPrompt(prompt);
-      const parsed = extractJsonFromResponse<{ files: VibeMasterFile[] }>(rawResponse);
+  const parsed = extractJsonFromResponse<{
+    stack?: string;
+    summary?: string;
+    files?: VibeMasterFile[];
+    connections?: VibeMasterConnection[];
+    journeys?: VibeMasterJourney[];
+    workspaces?: VibeMasterWorkspace[];
+  }>(rawResponse);
 
-      if (parsed.files && Array.isArray(parsed.files)) {
-        for (const file of parsed.files) {
-          analyzedFiles[file.path] = file;
-        }
-      }
-    } catch (err: any) {
-      console.warn(`[AI Analyzer] Chunk ${i + 1} failed:`, err?.message);
+  const fileMap: Record<string, VibeMasterFile> = {};
+  if (parsed.files && Array.isArray(parsed.files)) {
+    for (const f of parsed.files) {
+      fileMap[f.path] = f;
     }
   }
 
-  if (onProgress) onProgress({ message: 'Synthesizing feature workspaces & user journeys...', percent: 80 });
-
-  let stack = 'Polyglot Project';
-  let summary = 'Full-stack application analyzed by AI.';
-  let workspaces: VibeMasterWorkspace[] = [];
-  let journeys: VibeMasterJourney[] = [];
-
-  try {
-    const synthPrompt = buildSynthesisPrompt(projectName, analyzedFiles);
-    const synthRaw = await executeAIPrompt(synthPrompt);
-    const synthData = extractJsonFromResponse<{
-      stack?: string;
-      summary?: string;
-      workspaces?: VibeMasterWorkspace[];
-      journeys?: VibeMasterJourney[];
-    }>(synthRaw);
-
-    if (synthData.stack) stack = synthData.stack;
-    if (synthData.summary) summary = synthData.summary;
-    if (synthData.workspaces) workspaces = synthData.workspaces;
-    if (synthData.journeys) journeys = synthData.journeys;
-  } catch (err: any) {
-    console.warn('[AI Analyzer] Architecture synthesis fallback:', err?.message);
+  // Ensure any files not explicitly in AI output are indexed cleanly
+  for (const rf of rawFiles) {
+    if (!fileMap[rf.path]) {
+      fileMap[rf.path] = {
+        path: rf.path,
+        name: rf.name,
+        role: rf.path.includes('repo') ? 'storage' : rf.path.includes('service') ? 'service' : rf.path.includes('handler') ? 'controller' : 'view',
+        plainEnglish: `${rf.name} participates as an active component in this application.`,
+        inbound: 'Receives requests from callers.',
+        outbound: 'Returns processed output.',
+        calls: [],
+        calledBy: [],
+        dataShape: [],
+        blastRadius: {
+          score: 'low',
+          riskLabel: `${rf.name} Unit`,
+          safeInvariants: ['Preserve function and type signatures'],
+          impactedFiles: [],
+        },
+        userJourneys: [],
+      };
+    }
   }
 
   const master: VibeLensProjectMaster = {
     id: projectId,
     name: projectName,
-    stack,
-    summary,
+    stack: parsed.stack || 'Fullstack Application',
+    summary: parsed.summary || 'Application analyzed by AI.',
     analyzedAt: new Date().toISOString(),
     analyzer: 'ai',
-    files: analyzedFiles,
-    journeys,
-    workspaces,
+    files: fileMap,
+    connections: parsed.connections || [],
+    journeys: parsed.journeys || [],
+    workspaces: parsed.workspaces || [],
   };
 
   await saveProjectMaster(master);
-  if (onProgress) onProgress({ message: 'Analysis complete!', percent: 100 });
+  if (onProgress) onProgress({ message: 'Architecture visualizer ready!', percent: 100 });
 
   return master;
 }

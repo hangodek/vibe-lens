@@ -7,10 +7,16 @@ interface ConnectionEdgeProps {
   fromNode: CanvasNode;
   toNode: CanvasNode;
   isHighlighted?: boolean;
+  onSelect?: (edge: CanvasEdge) => void;
 }
 
-function ConnectionEdgeComponent({ edge, fromNode, toNode, isHighlighted = false }: ConnectionEdgeProps) {
-  // Determine relative layout direction to prevent reverse knotting / looping
+function ConnectionEdgeComponent({
+  edge,
+  fromNode,
+  toNode,
+  isHighlighted = false,
+  onSelect,
+}: ConnectionEdgeProps) {
   const rawStartX = fromNode.x + fromNode.width;
   const rawEndX = toNode.x;
   const isLeftToRight = rawEndX >= rawStartX - 20;
@@ -36,7 +42,6 @@ function ConnectionEdgeComponent({ edge, fromNode, toNode, isHighlighted = false
     controlX2 = endX - Math.max(dx, 40);
     controlY2 = endY;
   } else {
-    // Backward routing / cycle: connect left-to-right with an outward smooth arc
     startX = fromNode.x;
     startY = fromNode.y + fromNode.height * 0.7;
     endX = toNode.x + toNode.width;
@@ -56,64 +61,82 @@ function ConnectionEdgeComponent({ edge, fromNode, toNode, isHighlighted = false
 
   const style = EDGE_TYPE_STYLES[edge.type] || EDGE_TYPE_STYLES.render;
   const active = edge.isActive || isHighlighted;
-  const strokeColor = active ? style.activeStroke : style.stroke;
+  const strokeColor = active ? style.activeStroke : '#3b404d';
   const strokeWidth = active ? 2.5 : 1.5;
 
+  const displayText = edge.dataPassed || edge.label;
+  const pillWidth = displayText ? Math.min(220, displayText.length * 6.5 + 16) : 0;
+
   return (
-    <g>
-      {/* Background shadow stroke for high-contrast visibility */}
+    <g
+      className="cursor-pointer group"
+      onClick={() => onSelect && onSelect(edge)}
+    >
+      {/* Invisible thick stroke for easy mouse clicking */}
+      <path
+        d={pathD}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={20}
+        strokeLinecap="round"
+      />
+
+      {/* Dark background shadow stroke */}
       <path
         d={pathD}
         fill="none"
         stroke="#010102"
-        strokeWidth={strokeWidth + 2.5}
+        strokeWidth={strokeWidth + 3}
         strokeLinecap="round"
       />
 
-      {/* Main connection line: solid, calm vector path with zero animations */}
+      {/* Visible connection line */}
       <path
         d={pathD}
         fill="none"
         stroke={strokeColor}
         strokeWidth={strokeWidth}
         strokeLinecap="round"
-        opacity={active ? 1 : 0.65}
+        className="transition-colors duration-150 group-hover:stroke-[#828fff]"
+        opacity={active ? 1 : 0.8}
       />
 
-      {/* Edge label pill: only rendered when line is active/hovered to avoid cluttering */}
-      {active && edge.label && (
+      {/* Always-visible Data Passed Pill: Tells the coder what is passing! */}
+      {displayText && (
         <g transform={`translate(${midX}, ${midY})`}>
           <rect
-            x={-edge.label.length * 3.5 - 8}
-            y={-10}
-            width={edge.label.length * 7 + 16}
-            height={20}
-            rx={10}
-            fill="#08090a"
-            stroke={style.activeStroke}
+            x={-pillWidth / 2}
+            y={-11}
+            width={pillWidth}
+            height={22}
+            rx={6}
+            fill="#090a0d"
+            stroke={active ? style.activeStroke : '#2e323b'}
             strokeWidth={1}
+            className="transition-all duration-150 group-hover:border-[#5e6ad2] group-hover:fill-[#121318]"
           />
           <text
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#f7f8f8"
+            fill={active ? '#f7f8f8' : '#c3c8d4'}
             fontSize="10"
             fontFamily="JetBrains Mono, monospace"
-            className="select-none pointer-events-none"
+            className="select-none pointer-events-none font-medium truncate"
           >
-            {edge.label}
+            {displayText.length > 28 ? displayText.slice(0, 27) + '…' : displayText}
           </text>
         </g>
       )}
 
-      {/* Target connection point circle */}
+      {/* Target Arrow / Port Dot */}
       <circle
         cx={endX}
         cy={endY}
-        r={active ? 4 : 3}
+        r={active ? 4.5 : 3.5}
         fill={strokeColor}
         stroke="#010102"
         strokeWidth={1.5}
+        className="transition-colors duration-150 group-hover:fill-[#828fff]"
       />
     </g>
   );

@@ -90,8 +90,14 @@ export function useCodebase() {
   const currentTrace = activeProject.traces.find((t) => t.id === activeTraceId) || activeProject.traces[0];
 
   const { nodes, edges } = useMemo(() => {
-    return calculateLayout(displayedFiles, layerMode, currentTrace, activeTraceIndex);
-  }, [displayedFiles, layerMode, currentTrace, activeTraceIndex]);
+    return calculateLayout(
+      displayedFiles,
+      layerMode,
+      currentTrace,
+      activeTraceIndex,
+      activeProject.connections
+    );
+  }, [displayedFiles, layerMode, currentTrace, activeTraceIndex, activeProject.connections]);
 
   const allProjects = useMemo(() => {
     return [...customProjects, ...PRESET_PROJECTS];

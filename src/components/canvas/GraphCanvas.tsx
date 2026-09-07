@@ -3,6 +3,7 @@ import type { CanvasNode, CanvasEdge } from '../../types/graph';
 import { useGraphCanvas } from '../../hooks/useGraphCanvas';
 import { GraphNode } from './GraphNode';
 import { ConnectionEdge } from './ConnectionEdge';
+import { EdgeDetailDrawer } from './EdgeDetailDrawer';
 import { Minimap } from './Minimap';
 import { ZoomIn, ZoomOut, RotateCcw, Maximize2 } from 'lucide-react';
 
@@ -39,6 +40,7 @@ export function GraphCanvasComponent({
   } = useGraphCanvas(nodes, scopeKey);
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<CanvasEdge | null>(null);
 
   // Map to find nodes quickly for edge drawing
   const nodeMap = new Map<string, CanvasNode>();
@@ -92,13 +94,15 @@ export function GraphCanvasComponent({
             if (!fromNode || !toNode) return null;
 
             return (
-              <ConnectionEdge
-                key={edge.id}
-                edge={edge}
-                isHighlighted={connectedEdgeIds.has(edge.id)}
-                fromNode={fromNode}
-                toNode={toNode}
-              />
+              <g key={edge.id} className="pointer-events-auto">
+                <ConnectionEdge
+                  edge={edge}
+                  isHighlighted={connectedEdgeIds.has(edge.id) || selectedEdge?.id === edge.id}
+                  fromNode={fromNode}
+                  toNode={toNode}
+                  onSelect={setSelectedEdge}
+                />
+              </g>
             );
           })}
         </svg>
@@ -170,6 +174,17 @@ export function GraphCanvasComponent({
         nodes={activeNodes}
         viewport={viewport}
         selectedFileId={selectedFileId}
+      />
+
+      {/* Slide-Up Bottom Data Flow Drawer: Answers "What happened & what is passed?" */}
+      <EdgeDetailDrawer
+        edge={selectedEdge}
+        fromNode={selectedEdge ? nodeMap.get(selectedEdge.from) : undefined}
+        toNode={selectedEdge ? nodeMap.get(selectedEdge.to) : undefined}
+        onClose={() => setSelectedEdge(null)}
+        onDeepDiveFile={(fileId) => {
+          onSelectNode(fileId);
+        }}
       />
     </div>
   );
