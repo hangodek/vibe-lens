@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import type { CanvasNode, CanvasEdge } from '../../types/graph';
 import { useGraphCanvas } from '../../hooks/useGraphCanvas';
 import { GraphNode } from './GraphNode';
@@ -15,7 +15,7 @@ interface GraphCanvasProps {
   onSelectNode: (fileId: string) => void;
 }
 
-export function GraphCanvas({
+export function GraphCanvasComponent({
   nodes,
   edges,
   selectedFileId,
@@ -75,11 +75,13 @@ export function GraphCanvas({
         backgroundPosition: `${viewport.x}px ${viewport.y}px`,
       }}
     >
-      {/* Transformed Stage */}
+      {/* Transformed Stage - High Performance GPU Layer */}
       <div
-        className="absolute origin-top-left transition-transform duration-75 ease-out"
+        className={`absolute origin-top-left will-change-transform ${
+          isPanning ? '' : 'transition-transform duration-100 ease-out'
+        }`}
         style={{
-          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+          transform: `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.zoom})`,
           width: '5000px',
           height: '4000px',
         }}
@@ -118,7 +120,7 @@ export function GraphCanvas({
                 key={node.id}
                 onMouseEnter={() => setHoveredNodeId(node.fileId)}
                 onMouseLeave={() => setHoveredNodeId(null)}
-                className={`transition-opacity duration-200 ${isFaded ? 'opacity-40' : 'opacity-100'}`}
+                className={`transition-opacity duration-150 ${isFaded ? 'opacity-40' : 'opacity-100'}`}
               >
                 <GraphNode
                   node={node}
@@ -179,3 +181,5 @@ export function GraphCanvas({
     </div>
   );
 }
+
+export const GraphCanvas = memo(GraphCanvasComponent);

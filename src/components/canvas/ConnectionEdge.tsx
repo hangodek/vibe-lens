@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CanvasNode, CanvasEdge } from '../../types/graph';
 import { EDGE_TYPE_STYLES } from '../../constants/theme';
 
@@ -7,7 +8,7 @@ interface ConnectionEdgeProps {
   toNode: CanvasNode;
 }
 
-export function ConnectionEdge({ edge, fromNode, toNode }: ConnectionEdgeProps) {
+function ConnectionEdgeComponent({ edge, fromNode, toNode }: ConnectionEdgeProps) {
   // Determine relative layout direction to prevent reverse knotting / looping
   const rawStartX = fromNode.x + fromNode.width;
   const rawEndX = toNode.x;
@@ -117,3 +118,5 @@ export function ConnectionEdge({ edge, fromNode, toNode }: ConnectionEdgeProps) 
     </g>
   );
 }
+
+export const ConnectionEdge = memo(ConnectionEdgeComponent);
