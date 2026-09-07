@@ -59,32 +59,7 @@
   background: #343842;
 }
 
-/* Animated edge flow pulse */
-@keyframes edgeFlow {
-  0% {
-    stroke-dashoffset: 24;
-  }
-  100% {
-    stroke-dashoffset: 0;
-  }
-}
-
-.animate-edge-flow {
-  animation: edgeFlow 1.2s linear infinite;
-}
-
-@keyframes nodePing {
-  0% {
-    box-shadow: 0 0 0 0 rgba(94, 106, 210, 0.7);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(94, 106, 210, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(94, 106, 210, 0);
-  }
-}
-
-.animate-node-ping {
-  animation: nodePing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+/* Subtle node focus ring for active trace step (static, no continuous heavy GPU redraw) */
+.node-active-step {
+  box-shadow: 0 0 0 2px #5e6ad2, 0 0 16px rgba(94, 106, 210, 0.4);
 }

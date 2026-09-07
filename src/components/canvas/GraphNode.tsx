@@ -61,7 +61,7 @@ function GraphNodeComponent({
         isSelected
           ? 'border-[#5e6ad2] shadow-[0_0_24px_rgba(94,106,210,0.4)] ring-1 ring-[#5e6ad2]'
           : isTraceActive
-          ? 'border-[#828fff] shadow-[0_0_20px_rgba(130,143,255,0.4)] animate-node-ping'
+          ? 'border-[#828fff] node-active-step'
           : 'border-[#23252a] hover:border-[#343842]'
       }`}
       style={{

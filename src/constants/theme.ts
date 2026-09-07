@@ -92,23 +92,23 @@ export const NODE_TYPE_STYLES: Record<
 
 export const EDGE_TYPE_STYLES = {
   render: {
-    stroke: '#3b4252',
-    activeStroke: '#5e6ad2',
+    stroke: '#2e323b',
+    activeStroke: '#828fff',
     strokeDasharray: 'none',
   },
   data: {
-    stroke: '#10b981',
-    activeStroke: '#34d399',
-    strokeDasharray: '4 4',
+    stroke: '#2e323b',
+    activeStroke: '#828fff',
+    strokeDasharray: 'none',
   },
   api: {
-    stroke: '#f43f5e',
-    activeStroke: '#fb7185',
-    strokeDasharray: '6 3',
+    stroke: '#3b4252',
+    activeStroke: '#828fff',
+    strokeDasharray: 'none',
   },
   event: {
-    stroke: '#f59e0b',
-    activeStroke: '#fbbf24',
-    strokeDasharray: '2 2',
+    stroke: '#2e323b',
+    activeStroke: '#828fff',
+    strokeDasharray: 'none',
   },
 };

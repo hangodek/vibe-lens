@@ -70,16 +70,14 @@ function ConnectionEdgeComponent({ edge, fromNode, toNode, isHighlighted = false
         strokeLinecap="round"
       />
 
-      {/* Main connection line: zero animations when idle for 60 FPS performance */}
+      {/* Main connection line: solid, calm vector path with zero animations */}
       <path
         d={pathD}
         fill="none"
         stroke={strokeColor}
         strokeWidth={strokeWidth}
-        strokeDasharray={active ? '6 6' : style.strokeDasharray}
-        className={active ? 'animate-edge-flow' : ''}
         strokeLinecap="round"
-        opacity={active ? 1 : 0.75}
+        opacity={active ? 1 : 0.65}
       />
 
       {/* Edge label pill: only rendered when line is active/hovered to avoid cluttering */}
