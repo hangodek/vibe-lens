@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCodebase } from './hooks/useCodebase';
 import { useExecutionTrace } from './hooks/useExecutionTrace';
 import { StudioHeader } from './components/header/StudioHeader';
@@ -9,8 +9,13 @@ import { WorkspaceBar } from './components/canvas/WorkspaceBar';
 import { TracePlaybackBar } from './components/canvas/TracePlaybackBar';
 import { InspectorPanel } from './components/inspector/InspectorPanel';
 import { IngestModal } from './components/sidebar/IngestModal';
-import { ApiKeyModal } from './components/common/ApiKeyModal';
+import { AISetupModal } from './components/setup/AISetupModal';
+import { AnalysisScreen } from './components/setup/AnalysisScreen';
 import { ScreenLocatorModal } from './components/inspector/ScreenLocatorModal';
+import { analyzeProjectWithAI } from './utils/aiAnalyzer';
+import type { AnalysisProgress } from './utils/aiAnalyzer';
+import { enrichProjectWithMaster } from './utils/projectEnricher';
+import type { VibeProject } from './types/ast';
 
 export function App() {
   const {
@@ -38,29 +43,79 @@ export function App() {
   } = useCodebase();
 
   const [isIngestOpen, setIsIngestOpen] = useState(false);
-  const [isApiKeyOpen, setIsApiKeyOpen] = useState(false);
+  const [isAISetupOpen, setIsAISetupOpen] = useState(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
   const [isScreenLocatorOpen, setIsScreenLocatorOpen] = useState(false);
+
+  // AI Project Analysis States
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress>({
+    message: '',
+    percent: 0,
+  });
+  const [pendingProject, setPendingProject] = useState<VibeProject | null>(null);
 
   // Execution Trace stepper controls
   const trace = useExecutionTrace(activeProject.traces);
 
   // Synchronize trace step index with layout engine
-  React.useEffect(() => {
+  useEffect(() => {
     syncTraceIndex(trace.activeStepIndex);
   }, [trace.activeStepIndex, syncTraceIndex]);
 
   // Synchronize selected trace ID with layout engine
-  React.useEffect(() => {
+  useEffect(() => {
     setActiveTraceId(trace.selectedTraceId);
   }, [trace.selectedTraceId, setActiveTraceId]);
 
   // When trace step changes, automatically focus the active file in inspector
-  React.useEffect(() => {
+  useEffect(() => {
     if (layerMode === 'trace' && trace.currentStep?.activeNodeId) {
       setSelectedFileId(trace.currentStep.activeNodeId);
     }
   }, [layerMode, trace.currentStep, setSelectedFileId]);
+
+  // AI Pipeline Runner
+  const runAIAnalysis = async (project: VibeProject, force = false) => {
+    setIsAnalyzing(true);
+    setAnalysisProgress({ message: 'Initiating AI codebase analysis...', percent: 5 });
+
+    try {
+      const rawFiles = project.files.map((f) => ({
+        path: f.path,
+        name: f.name,
+        code: f.code,
+        lineCount: f.lineCount,
+      }));
+
+      const master = await analyzeProjectWithAI(
+        project.id,
+        project.name,
+        rawFiles,
+        (p) => setAnalysisProgress(p),
+        force
+      );
+
+      const enriched = enrichProjectWithMaster(project, master);
+      loadCustomProject(enriched);
+    } catch (err: any) {
+      console.warn('AI analysis error, loading base project:', err?.message);
+      loadCustomProject(project);
+    } finally {
+      setIsAnalyzing(false);
+      setPendingProject(null);
+    }
+  };
+
+  const handleProjectIngested = (project: VibeProject) => {
+    const provider = localStorage.getItem('vibe_ai_provider');
+    if (!provider) {
+      setPendingProject(project);
+      setIsAISetupOpen(true);
+    } else {
+      runAIAnalysis(project);
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#010102] text-[#f7f8f8]">
@@ -72,7 +127,8 @@ export function App() {
         onChangeMode={setLayerMode}
         onChangeScope={setViewScope}
         onOpenIngest={() => setIsIngestOpen(true)}
-        onOpenApiKey={() => setIsApiKeyOpen(true)}
+        onOpenApiKey={() => setIsAISetupOpen(true)}
+        onRescanAI={() => runAIAnalysis(activeProject, true)}
         onSelectFile={(id) => {
           setSelectedFileId(id);
           setIsInspectorOpen(true);
@@ -162,13 +218,29 @@ export function App() {
         isOpen={isIngestOpen}
         onClose={() => setIsIngestOpen(false)}
         onAddFile={addCustomFile}
-        onLoadProject={loadCustomProject}
+        onLoadProject={handleProjectIngested}
       />
 
-      <ApiKeyModal
-        isOpen={isApiKeyOpen}
-        onClose={() => setIsApiKeyOpen(false)}
+      {/* AI Configuration Modal (CLI tools like agy/opencode/claude & cloud APIs) */}
+      <AISetupModal
+        isOpen={isAISetupOpen}
+        onClose={() => setIsAISetupOpen(false)}
+        onSaved={() => {
+          if (pendingProject) {
+            runAIAnalysis(pendingProject);
+          }
+        }}
       />
+
+      {/* Fullscreen AI Codebase Analyzer Progress Screen */}
+      {isAnalyzing && (
+        <AnalysisScreen
+          projectName={activeProject.name}
+          progress={analysisProgress}
+          activeTool={localStorage.getItem('vibe_cli_tool') || 'agy'}
+          onCancel={() => setIsAnalyzing(false)}
+        />
+      )}
     </div>
   );
 }

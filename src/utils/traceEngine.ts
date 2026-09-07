@@ -88,27 +88,33 @@ export function calculateLayout(
         label: `Ch.${step.stepNumber} → Ch.${nextStep.stepNumber}`,
         type: 'event',
         isActive: isCurrent || isPastOrActive,
-        animated: isCurrent,
+        animated: false,
       });
     }
 
-    files.forEach((file) => {
-      if (!uniqueIds.includes(file.id)) {
-        nodes.push({
-          id: file.id,
-          fileId: file.id,
-          name: file.name,
-          type: file.type,
-          x: 80 + (nodes.length - uniqueIds.length) * 85,
-          y: 450,
-          width: 200,
-          height: 90,
-          label: file.name,
-          badge: 'Idle',
-          previewType: file.previewType,
-          riskScore: file.blastRadius?.score,
-        });
-      }
+    // Idle files placed in collision-free wrapped multi-column grid below
+    const idleFiles = files.filter((f) => !uniqueIds.includes(f.id));
+    const IDLE_COLS = 3;
+    const IDLE_WIDTH = 220;
+    const IDLE_HEIGHT = 80;
+
+    idleFiles.forEach((file, idx) => {
+      const col = idx % IDLE_COLS;
+      const row = Math.floor(idx / IDLE_COLS);
+      nodes.push({
+        id: file.id,
+        fileId: file.id,
+        name: file.name,
+        type: file.type,
+        x: 80 + col * (IDLE_WIDTH + 30),
+        y: 450 + row * (IDLE_HEIGHT + 25),
+        width: IDLE_WIDTH,
+        height: IDLE_HEIGHT,
+        label: file.name,
+        badge: 'Idle',
+        previewType: file.previewType,
+        riskScore: file.blastRadius?.score,
+      });
     });
 
     return { nodes, edges };

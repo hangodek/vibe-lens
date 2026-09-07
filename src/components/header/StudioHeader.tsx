@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import type { LayerMode, ParsedCodeFile } from '../../types/ast';
 import { LayerSelector } from './LayerSelector';
-import { Compass, Key, Plus, Search, X } from 'lucide-react';
+import { Compass, Key, Plus, Search, X, Cpu } from 'lucide-react';
 
 interface StudioHeaderProps {
   currentMode: LayerMode;
@@ -11,6 +11,7 @@ interface StudioHeaderProps {
   onChangeScope?: (scope: 'core' | 'all') => void;
   onOpenIngest: () => void;
   onOpenApiKey: () => void;
+  onRescanAI?: () => void;
   onSelectFile?: (fileId: string) => void;
 }
 
@@ -22,6 +23,7 @@ export function StudioHeader({
   onChangeScope,
   onOpenIngest,
   onOpenApiKey,
+  onRescanAI,
   onSelectFile,
 }: StudioHeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -156,6 +158,17 @@ export function StudioHeader({
             </>
           )}
         </div>
+
+        {onRescanAI ? (
+          <button
+            onClick={onRescanAI}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#121316] hover:bg-[#1c1d22] border border-[#23252a] hover:border-[#5e6ad2] text-[#d0d6e0] hover:text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+            title="Scan project with AI agent (agy, opencode, claude)"
+          >
+            <Cpu className="w-3.5 h-3.5 text-[#34d399]" />
+            <span className="hidden md:inline">AI Scan</span>
+          </button>
+        ) : null}
 
         <button
           onClick={onOpenIngest}

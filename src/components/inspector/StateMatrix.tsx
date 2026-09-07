@@ -10,9 +10,9 @@ export function StateMatrix({ file }: StateMatrixProps) {
     return (
       <div className="p-6 text-center text-[#8a8f98]">
         <CheckCircle2 className="w-8 h-8 mx-auto text-[#34d399] mb-2 opacity-80" />
-        <h4 className="text-sm font-semibold text-[#f7f8f8]">Stateless Pure Component</h4>
+        <h4 className="text-sm font-semibold text-[#f7f8f8]">Stateless Functional Unit</h4>
         <p className="text-xs text-[#8a8f98] mt-1 max-w-xs mx-auto">
-          This file doesn't hold internal memory. It recalculates output directly from incoming props, reducing bug probability.
+          This file does not hold internal mutable state or struct declarations. It operates purely on parameters passed into its methods or templates.
         </p>
       </div>
     );
@@ -23,10 +23,10 @@ export function StateMatrix({ file }: StateMatrixProps) {
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-mono uppercase text-[#8a8f98] flex items-center gap-2">
           <Activity className="w-3.5 h-3.5 text-[#34d399]" />
-          State Variables ({file.states.length})
+          Data Shape & State ({file.states.length})
         </h4>
         <span className="text-[10px] font-mono text-[#34d399] bg-[#34d399]/10 px-2 py-0.5 rounded-full border border-[#34d399]/20">
-          Reactive
+          Active
         </span>
       </div>
 
@@ -41,7 +41,7 @@ export function StateMatrix({ file }: StateMatrixProps) {
                 {st.name}
               </span>
               <span className="text-[10px] font-mono text-[#8a8f98]">
-                Initial: <code className="text-[#e2e8f0]">{st.initialValue}</code>
+                Type / Init: <code className="text-[#e2e8f0]">{st.initialValue}</code>
               </span>
             </div>
 
@@ -50,13 +50,13 @@ export function StateMatrix({ file }: StateMatrixProps) {
             </p>
 
             <div className="pt-2 border-t border-[#1c1d22] flex items-center justify-between text-[11px] font-mono text-[#8a8f98]">
-              <span>Setter Function:</span>
-              <span className="text-[#828fff]">{st.setter}()</span>
+              <span>Setter / Type:</span>
+              <span className="text-[#828fff] font-mono">{st.setter}</span>
             </div>
 
             {st.modifiedBy.length > 0 && (
               <div className="flex items-center justify-between text-[11px] font-mono text-[#8a8f98]">
-                <span>Modified By:</span>
+                <span>Accessed By:</span>
                 <span className="text-[#d0d6e0] truncate max-w-[160px]">
                   {st.modifiedBy.join(', ')}
                 </span>
@@ -67,9 +67,9 @@ export function StateMatrix({ file }: StateMatrixProps) {
       </div>
 
       <div className="p-3 bg-[#121316] border border-[#23252a] rounded-xl flex items-start gap-2.5">
-        <AlertCircle className="w-4 h-4 text-[#f59e0b] shrink-0 mt-0.5" />
+        <AlertCircle className="w-4 h-4 text-[#828fff] shrink-0 mt-0.5" />
         <div className="text-xs text-[#8a8f98] leading-relaxed">
-          <strong className="text-[#d0d6e0]">Vibe Tip:</strong> When any state variable changes, this component and all its nested children re-render. Keep states minimal!
+          <strong className="text-[#d0d6e0]">Architecture Notice:</strong> Keep mutable data shapes consolidated within dedicated service entities or models to prevent state fragmentation.
         </div>
       </div>
     </div>

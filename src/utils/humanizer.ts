@@ -8,26 +8,20 @@ export function generateEli5Summary(file: ParsedCodeFile): {
 } {
   const compList = file.components.length > 0 ? file.components.join(', ') : file.name;
   
-  let overview = file.description;
-  if (file.type === 'page') {
-    overview = `This is a primary screen in your app. It arranges visual components like ${file.renderedChildren.join(', ') || 'UI sections'} into a coherent layout and acts as the entry door for users visiting this route.`;
-  } else if (file.type === 'hook') {
-    overview = `This is a background helper hook. It manages live state, coordinates asynchronous network requests, and feeds clean data directly into your visual components so they don't get messy.`;
-  } else if (file.type === 'store') {
-    overview = `This is your global memory bank. Any component in the app can read from or write to this store without passing data through a dozen intermediate files.`;
-  } else if (file.type === 'api') {
-    overview = `This is a secure server endpoint. It runs on the server, safely accessing private secrets/keys, talking to external databases or AI models, and returning clean JSON to your browser.`;
-  }
+  // Use the actual file description (AI plainEnglish or semantic processing description)
+  // Never clobber backend Go/Python/etc. files with React-specific hook/store text!
+  const overview = file.description || `${file.name} operates as a ${file.pipelineRole || 'module'} in this architecture.`;
 
   const magicVariables: string[] = [];
   if (file.states.length > 0) {
     file.states.forEach((s) => {
+      const modifier = s.modifiedBy.length > 0 ? ` — Used by: ${s.modifiedBy.join(', ')}` : '';
       magicVariables.push(
-        `• ${s.name}: Holds the current value (starts as ${s.initialValue}). When ${s.setter}() is called, React repaints the screen.`
+        `• ${s.name}: ${s.purpose || `Type: ${s.initialValue}`}${modifier}`
       );
     });
   } else {
-    magicVariables.push('• No local state variables defined. This component is stateless and displays whatever props its parent gives it.');
+    magicVariables.push('• No internal mutable state or struct data mapped for this file. Operates functionally.');
   }
 
   const vibePromptAdvice = `If you want your AI assistant to tweak this file, prompt it like this: "In ${file.path}, update ${compList} to..." — specifying the exact file path stops AI hallucination!`;

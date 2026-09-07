@@ -46,34 +46,91 @@ export function AIAssistantDrawer({
     setInput('');
     setIsThinking(true);
 
-    const openAiKey = localStorage.getItem('vibe_key_openai');
     const groqKey = localStorage.getItem('vibe_key_groq');
-    const localUrl = localStorage.getItem('vibe_local_url') || 'http://localhost:11434/v1';
-    const localModel = localStorage.getItem('vibe_local_model') || 'llama3.2';
-    const activeProvider = localStorage.getItem('vibe_ai_provider') || 'local';
+    const openAiKey = localStorage.getItem('vibe_key_openai');
+    const anthropicKey = localStorage.getItem('vibe_key_anthropic');
+    const geminiKey = localStorage.getItem('vibe_key_gemini');
+    const localUrl = localStorage.getItem('vibe_local_url') || 'http://localhost:4242';
+    const cliTool = localStorage.getItem('vibe_cli_tool') || 'agy';
+    const activeProvider = localStorage.getItem('vibe_ai_provider') || 'local_cli';
+
+    // 1. Check Local CLI Agent via Companion Server
+    if (activeProvider === 'local_cli') {
+      try {
+        const res = await fetch(`${localUrl}/api/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: cliTool,
+            file: file.path,
+            question: queryText,
+            code: file.code.slice(0, 4000),
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.reply) {
+            setMessages((prev) => [...prev, { role: 'assistant', content: data.reply }]);
+            setIsThinking(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Companion server not reachable, trying cloud/fallback', err);
+      }
+    }
 
     const systemPrompt = `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path} (${file.pipelineRole || 'module'}). Code: \`\`\`${file.code.slice(0, 3000)}\`\`\``;
 
-    // 1. Localhost AI (Ollama / LM Studio) or Cloud Providers (Groq / OpenAI)
-    const targetUrl = activeProvider === 'local'
-      ? `${localUrl.replace(/\/+$/, '')}/chat/completions`
-      : groqKey
+    // 2. Cloud Providers (Groq / OpenAI / Anthropic / Gemini)
+    if (activeProvider === 'anthropic' && anthropicKey) {
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-sonnet-latest',
+            max_tokens: 1024,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: queryText }],
+          }),
+        });
+        const data = await res.json();
+        const reply = data.content?.[0]?.text;
+        if (reply) {
+          setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+          setIsThinking(false);
+          return;
+        }
+      } catch (e) {
+        console.warn('Anthropic error', e);
+      }
+    }
+
+    const targetUrl = activeProvider === 'groq' && groqKey
       ? 'https://api.groq.com/openai/v1/chat/completions'
-      : openAiKey
+      : activeProvider === 'openai' && openAiKey
       ? 'https://api.openai.com/v1/chat/completions'
+      : activeProvider === 'gemini' && geminiKey
+      ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
       : null;
 
     if (targetUrl) {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (groqKey && activeProvider === 'groq') headers.Authorization = `Bearer ${groqKey}`;
-      if (openAiKey && activeProvider === 'openai') headers.Authorization = `Bearer ${openAiKey}`;
-
+      const authKey = activeProvider === 'groq' ? groqKey : activeProvider === 'gemini' ? geminiKey : openAiKey;
       try {
         const res = await fetch(targetUrl, {
           method: 'POST',
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authKey}`,
+          },
           body: JSON.stringify({
-            model: activeProvider === 'local' ? localModel : groqKey ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini',
+            model: activeProvider === 'groq' ? 'llama-3.3-70b-versatile' : activeProvider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini',
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: queryText }],
           }),
         });
