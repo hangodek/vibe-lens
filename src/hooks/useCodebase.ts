@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import type { VibeProject, ParsedCodeFile, LayerMode } from '../types/ast';
 import { PRESET_PROJECTS } from '../constants/presets';
 import { calculateLayout } from '../utils/traceEngine';
+import { detectWorkspaces, type FeatureWorkspace } from '../utils/workspaceDetector';
 
 export function useCodebase() {
   const [customProjects, setCustomProjects] = useState<VibeProject[]>([]);
@@ -14,6 +15,7 @@ export function useCodebase() {
   const [viewScope, setViewScope] = useState<'core' | 'all'>('core');
   const [activeTraceIndex, setActiveTraceIndex] = useState(0);
   const [activeTraceId, setActiveTraceId] = useState<string>('');
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('all');
 
   // Hotkeys: '1' -> screen, '2' -> data, '3' -> trace
   useEffect(() => {
@@ -31,18 +33,37 @@ export function useCodebase() {
     return [...activeProject.files, ...customFiles];
   }, [activeProject, customFiles]);
 
-  // Anti-Spaghetti Filter: In 'core' mode, focus on primary pages, routes, and state hubs
+  // Dynamically extract universal workspaces based on directory structure (zero hardcoding)
+  const workspaces: FeatureWorkspace[] = useMemo(() => {
+    return detectWorkspaces(allFiles);
+  }, [allFiles]);
+
+  // When project changes, set initial workspace
+  useEffect(() => {
+    if (workspaces.length > 1) {
+      // Pick first feature domain (e.g. Auth or Product, skipping 'all' as default)
+      const firstFeature = workspaces.find((w) => w.id !== 'all' && w.id !== 'root') || workspaces[0];
+      setActiveWorkspaceId(firstFeature.id);
+    } else {
+      setActiveWorkspaceId('all');
+    }
+  }, [activeProject.id]);
+
+  // Workspace-Isolated Files: Canvas ONLY loads nodes belonging to active workspace
   const displayedFiles = useMemo(() => {
-    if (viewScope === 'all' || allFiles.length <= 8) return allFiles;
+    if (activeWorkspaceId === 'all' || !activeWorkspaceId || workspaces.length <= 1) {
+      if (viewScope === 'all' || allFiles.length <= 8) return allFiles;
+      const core = allFiles.filter((f) => {
+        if (f.type === 'page' || f.type === 'layout' || f.type === 'store' || f.type === 'api') return true;
+        if (f.states.length > 0 || f.apiCalls.length > 0 || f.renderedChildren.length > 0) return true;
+        return false;
+      });
+      return core.length >= 3 ? core : allFiles;
+    }
 
-    const core = allFiles.filter((f) => {
-      if (f.type === 'page' || f.type === 'layout' || f.type === 'store' || f.type === 'api') return true;
-      if (f.states.length > 0 || f.apiCalls.length > 0 || f.renderedChildren.length > 0) return true;
-      return false;
-    });
-
-    return core.length >= 3 ? core : allFiles;
-  }, [allFiles, viewScope]);
+    const ws = workspaces.find((w) => w.id === activeWorkspaceId);
+    return ws ? ws.files : allFiles;
+  }, [allFiles, activeWorkspaceId, workspaces, viewScope]);
 
   const selectedFile = useMemo(() => {
     return allFiles.find((f) => f.id === selectedFileId) || allFiles[0] || null;
@@ -81,12 +102,15 @@ export function useCodebase() {
     allProjects,
     allFiles,
     displayedFiles,
+    workspaces,
+    activeWorkspaceId,
     selectedFile,
     selectedFileId,
     layerMode,
     viewScope,
     nodes,
     edges,
+    setActiveWorkspaceId,
     setSelectedFileId,
     setLayerMode,
     setViewScope,
