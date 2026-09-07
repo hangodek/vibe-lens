@@ -6,7 +6,9 @@ import { Compass, Key, Plus, Search, X } from 'lucide-react';
 interface StudioHeaderProps {
   currentMode: LayerMode;
   files?: ParsedCodeFile[];
+  viewScope?: 'core' | 'all';
   onChangeMode: (mode: LayerMode) => void;
+  onChangeScope?: (scope: 'core' | 'all') => void;
   onOpenIngest: () => void;
   onOpenApiKey: () => void;
   onSelectFile?: (fileId: string) => void;
@@ -15,7 +17,9 @@ interface StudioHeaderProps {
 export function StudioHeader({
   currentMode,
   files = [],
+  viewScope = 'core',
   onChangeMode,
+  onChangeScope,
   onOpenIngest,
   onOpenApiKey,
   onSelectFile,
@@ -68,8 +72,13 @@ export function StudioHeader({
         </div>
       </div>
 
-      {/* Center: Layer Selector */}
-      <LayerSelector currentMode={currentMode} onChangeMode={onChangeMode} />
+      {/* Center: Layer Selector with Core Flow / All Files Filter */}
+      <LayerSelector
+        currentMode={currentMode}
+        viewScope={viewScope}
+        onChangeMode={onChangeMode}
+        onChangeScope={onChangeScope}
+      />
 
       {/* Right Controls: Quick Search, Ingest, and API Key */}
       <div className="flex items-center gap-2">

@@ -1,120 +1,203 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import type { ParsedCodeFile, VibeProject } from '../../types/ast';
 import { parseSourceCode } from '../../utils/astParser';
-import type { ParsedCodeFile } from '../../types/ast';
-import { PlusCircle, X, Sparkles } from 'lucide-react';
+import { scanLocalDirectoryWithPicker, scanDirectoryFromInput } from '../../utils/directoryScanner';
+import { importFromGitHub } from '../../utils/githubImporter';
+import { importFromZip } from '../../utils/zipImporter';
+import { IngestTabPanels } from './IngestTabPanels';
+import { 
+  X, 
+  FolderOpen, 
+  GitBranch, 
+  Archive, 
+  FileCode, 
+  Sparkles, 
+  Loader2, 
+  AlertCircle 
+} from 'lucide-react';
 
 interface IngestModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddFile: (file: ParsedCodeFile) => void;
+  onLoadProject: (project: VibeProject) => void;
 }
 
-export function IngestModal({ isOpen, onClose, onAddFile }: IngestModalProps) {
-  const [filePath, setFilePath] = useState('components/CartDrawer.tsx');
-  const [rawCode, setRawCode] = useState(`import React, { useState } from 'react';
+export type IngestTab = 'folder' | 'github' | 'zip' | 'paste';
 
-export function CartDrawer({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const [promoCode, setPromoCode] = useState('');
-  const [discount, setDiscount] = useState(0);
+export function IngestModal({ isOpen, onClose, onAddFile, onLoadProject }: IngestModalProps) {
+  const [activeTab, setActiveTab] = useState<IngestTab>('folder');
+  const [isLoading, setIsLoading] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  async function applyCoupon() {
-    const res = await fetch('/api/coupon', {
-      method: 'POST',
-      body: JSON.stringify({ promoCode })
-    });
-    const data = await res.json();
-    if (data.valid) setDiscount(data.amount);
-  }
+  // Form states
+  const [githubUrl, setGithubUrl] = useState('');
+  const [pastePath, setPastePath] = useState('components/QuickCard.tsx');
+  const [pasteCode, setPasteCode] = useState(`export function QuickCard() {\n  return <div>Custom Vibe Component</div>;\n}`);
 
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
-      <div className="w-80 bg-zinc-900 p-4">
-        <button onClick={onClose}>Close</button>
-        <input value={promoCode} onChange={(e) => setPromoCode(e.target.value)} />
-        <button onClick={applyCoupon}>Apply</button>
-      </div>
-    </div>
-  );
-}`);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const zipInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) return null;
 
-  const handleIngest = () => {
-    if (!rawCode.trim()) return;
-    const parsed = parseSourceCode(filePath, rawCode);
+  // 1. Native Folder Scanner
+  const handleScanFolder = async () => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    setStatusMsg('Requesting local directory access...');
+    try {
+      if ('showDirectoryPicker' in window) {
+        const project = await scanLocalDirectoryWithPicker();
+        onLoadProject(project);
+        onClose();
+      } else {
+        folderInputRef.current?.click();
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setErrorMsg(err.message || 'Could not scan local directory.');
+      }
+    } finally {
+      setIsLoading(false);
+      setStatusMsg(null);
+    }
+  };
+
+  const handleFolderInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    setIsLoading(true);
+    setStatusMsg(`Reading ${e.target.files.length} files...`);
+    try {
+      const project = await scanDirectoryFromInput(e.target.files);
+      onLoadProject(project);
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error processing directory.');
+    } finally {
+      setIsLoading(false);
+      setStatusMsg(null);
+    }
+  };
+
+  // 2. GitHub Importer
+  const handleImportGitHub = async () => {
+    if (!githubUrl.trim()) return;
+    setIsLoading(true);
+    setErrorMsg(null);
+    try {
+      const project = await importFromGitHub(githubUrl, (msg) => setStatusMsg(msg));
+      onLoadProject(project);
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to import GitHub repository.');
+    } finally {
+      setIsLoading(false);
+      setStatusMsg(null);
+    }
+  };
+
+  // 3. Zip Upload
+  const handleZipFile = async (file: File) => {
+    setIsLoading(true);
+    setErrorMsg(null);
+    setStatusMsg(`Extracting ${file.name}...`);
+    try {
+      const project = await importFromZip(file);
+      onLoadProject(project);
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to unzip project archive.');
+    } finally {
+      setIsLoading(false);
+      setStatusMsg(null);
+    }
+  };
+
+  // 4. Quick Paste
+  const handlePasteSubmit = () => {
+    if (!pasteCode.trim()) return;
+    const parsed = parseSourceCode(pastePath, pasteCode);
     onAddFile(parsed);
     onClose();
   };
 
+  const tabList = [
+    { id: 'folder', label: 'Folder', icon: FolderOpen },
+    { id: 'github', label: 'GitHub', icon: GitBranch },
+    { id: 'zip', label: 'Zip Drop', icon: Archive },
+    { id: 'paste', label: 'Paste', icon: FileCode },
+  ] as const;
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#08090a] border border-[#23252a] rounded-xl max-w-2xl w-full p-6 relative shadow-2xl flex flex-col max-h-[90vh]">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-[#8a8f98] hover:text-white"
-        >
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#08090a] border border-[#23252a] rounded-2xl max-w-xl w-full p-6 relative shadow-2xl flex flex-col gap-4 max-h-[90vh]">
+        <button onClick={onClose} className="absolute top-4 right-4 text-[#8a8f98] hover:text-white cursor-pointer">
           <X className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2 mb-2 text-[#5e6ad2]">
-          <PlusCircle className="w-5 h-5" />
-          <h3 className="text-base font-semibold text-[#f7f8f8]">
-            Ingest Vibe Code File
+        <div>
+          <h3 className="text-sm font-semibold text-[#f7f8f8] flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[#5e6ad2]" />
+            Import Vibe Codebase
           </h3>
-        </div>
-        <p className="text-xs text-[#8a8f98] mb-4">
-          Paste any React/TypeScript component, hook, or API route generated by Cursor, v0, or Claude Code to map its architecture.
-        </p>
-
-        <div className="space-y-3 flex-1 overflow-hidden flex flex-col">
-          <div>
-            <label className="text-xs font-mono text-[#8a8f98] block mb-1">
-              File Virtual Path
-            </label>
-            <input
-              type="text"
-              value={filePath}
-              onChange={(e) => setFilePath(e.target.value)}
-              placeholder="e.g. components/Header.tsx"
-              className="w-full bg-[#121316] border border-[#23252a] rounded-lg px-3 py-1.5 text-xs text-[#f7f8f8] outline-none font-mono focus:border-[#5e6ad2]"
-            />
-          </div>
-
-          <div className="flex-1 flex flex-col min-h-[220px]">
-            <label className="text-xs font-mono text-[#8a8f98] block mb-1">
-              Component / Source Code
-            </label>
-            <textarea
-              value={rawCode}
-              onChange={(e) => setRawCode(e.target.value)}
-              placeholder="Paste code here..."
-              className="flex-1 w-full bg-[#121316] border border-[#23252a] rounded-lg p-3 text-xs text-[#f7f8f8] font-mono resize-none outline-none focus:border-[#5e6ad2]"
-            />
-          </div>
+          <p className="text-xs text-[#8a8f98] mt-0.5">
+            Visualize any React, Next.js, Vue, Svelte, or Python project in 1 click.
+          </p>
         </div>
 
-        <div className="flex items-center justify-between pt-4 mt-4 border-t border-[#23252a]">
-          <span className="text-[11px] font-mono text-[#62666d]">
-            Parsed 100% in browser via AST extraction
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs text-[#8a8f98] hover:text-white rounded-lg hover:bg-[#121316]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleIngest}
-              className="px-4 py-2 bg-[#5e6ad2] hover:bg-[#828fff] text-white text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Visualize Architecture
-            </button>
-          </div>
+        {/* Tab Selector */}
+        <div className="grid grid-cols-4 gap-1 p-1 bg-[#121316] border border-[#23252a] rounded-xl text-xs font-medium">
+          {tabList.map((t) => {
+            const Icon = t.icon;
+            const isActive = activeTab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => { setActiveTab(t.id); setErrorMsg(null); }}
+                className={`py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                  isActive ? 'bg-[#1c1d22] text-white shadow-xs font-semibold' : 'text-[#8a8f98] hover:text-white'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#5e6ad2]' : ''}`} />
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Error / Status Notices */}
+        {errorMsg && (
+          <div className="p-3 bg-[#ef4444]/10 border border-[#ef4444]/30 rounded-xl flex items-center gap-2 text-xs text-[#f87171]">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+        {statusMsg && (
+          <div className="p-3 bg-[#5e6ad2]/10 border border-[#5e6ad2]/30 rounded-xl flex items-center gap-2 text-xs text-[#828fff]">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            <span>{statusMsg}</span>
+          </div>
+        )}
+
+        {/* Tab Content Panels */}
+        <IngestTabPanels
+          activeTab={activeTab}
+          isLoading={isLoading}
+          githubUrl={githubUrl}
+          pastePath={pastePath}
+          pasteCode={pasteCode}
+          folderInputRef={folderInputRef}
+          zipInputRef={zipInputRef}
+          setGithubUrl={setGithubUrl}
+          setPastePath={setPastePath}
+          setPasteCode={setPasteCode}
+          onScanFolder={handleScanFolder}
+          onFolderInputChange={handleFolderInputChange}
+          onImportGitHub={handleImportGitHub}
+          onZipFile={handleZipFile}
+          onPasteSubmit={handlePasteSubmit}
+        />
       </div>
     </div>
   );

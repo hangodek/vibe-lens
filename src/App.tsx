@@ -14,15 +14,20 @@ import { ScreenLocatorModal } from './components/inspector/ScreenLocatorModal';
 export function App() {
   const {
     activeProject,
+    allProjects,
     allFiles,
+    displayedFiles,
     selectedFile,
     selectedFileId,
     layerMode,
+    viewScope,
     nodes,
     edges,
     setSelectedFileId,
     setLayerMode,
+    setViewScope,
     switchProject,
+    loadCustomProject,
     addCustomFile,
     setActiveTraceIndex: syncTraceIndex,
     setActiveTraceId,
@@ -55,11 +60,13 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#010102] text-[#f7f8f8]">
-      {/* Studio Header Bar */}
+      {/* Studio Header Bar with Anti-Spaghetti Filter & Quick Search */}
       <StudioHeader
         currentMode={layerMode}
         files={allFiles}
+        viewScope={viewScope}
         onChangeMode={setLayerMode}
+        onChangeScope={setViewScope}
         onOpenIngest={() => setIsIngestOpen(true)}
         onOpenApiKey={() => setIsApiKeyOpen(true)}
         onSelectFile={(id) => {
@@ -74,10 +81,11 @@ export function App() {
         <aside className="w-64 border-r border-[#23252a] bg-[#08090a] flex flex-col shrink-0 z-20">
           <PresetDrawer
             currentProjectId={activeProject.id}
+            allProjects={allProjects}
             onSelectProject={switchProject}
           />
           <FileExplorer
-            files={allFiles}
+            files={displayedFiles}
             selectedFileId={selectedFileId}
             onSelectFile={(id) => {
               setSelectedFileId(id);
@@ -109,7 +117,7 @@ export function App() {
             edges={edges}
             selectedFileId={selectedFileId}
             activeTraceStepNodeId={layerMode === 'trace' ? trace.currentStep?.activeNodeId : undefined}
-            scopeKey={`${activeProject.id}-${layerMode}`}
+            scopeKey={`${activeProject.id}-${layerMode}-${viewScope}`}
             onSelectNode={(fileId) => {
               setSelectedFileId(fileId);
               setIsInspectorOpen(true);
@@ -136,11 +144,12 @@ export function App() {
         onClose={() => setIsScreenLocatorOpen(false)}
       />
 
-      {/* Ingestion & Settings Modals */}
+      {/* 4-Tier Ingestion Modal Hub (Folder, GitHub, Zip, Paste) */}
       <IngestModal
         isOpen={isIngestOpen}
         onClose={() => setIsIngestOpen(false)}
         onAddFile={addCustomFile}
+        onLoadProject={loadCustomProject}
       />
 
       <ApiKeyModal
