@@ -21,32 +21,50 @@ const GENERIC_CONTAINERS = new Set([
   'modules',
   'services',
   'packages',
+  'static',
+  'javascript',
+  'scripts',
+  'js',
+  'assets',
+  'middleware',
+  'middlewares',
 ]);
 
 export function extractSubsystemKey(filePath: string): string {
   const clean = filePath.replace(/\\/g, '/').replace(/^\/+/, '');
   const parts = clean.split('/').filter((p) => !p.startsWith('.') && p.length > 0);
+  const fileName = parts[parts.length - 1].toLowerCase();
 
   if (parts.length <= 1) {
     return 'root';
   }
 
   // Root entrypoint files (e.g. cmd/server/main.go or manage.py)
-  const fileName = parts[parts.length - 1].toLowerCase();
   if (parts.length === 2 && (fileName.startsWith('main.') || fileName.startsWith('app.') || fileName.startsWith('server.') || fileName.startsWith('index.'))) {
     return 'root';
   }
 
-  // Filter out generic outer wrappers (src, internal, app, web, templates)
+  // Name-based domain attachment for client scripts & specific middlewares (Zero Orphans)
+  if (fileName.includes('cart') || fileName.includes('checkout') || fileName.includes('order')) {
+    return 'order';
+  }
+  if (fileName.includes('auth') || fileName.includes('login') || fileName.includes('register') || fileName.includes('profile') || fileName.includes('session')) {
+    return 'auth';
+  }
+  if (fileName.includes('product') || fileName.includes('home') || fileName.includes('catalog') || fileName.includes('item') || fileName.includes('detail')) {
+    return 'product';
+  }
+
+  // Filter out generic outer wrappers (src, internal, app, web, templates, static, javascript, middleware)
   const meaningful = parts.slice(0, -1).filter((seg) => !GENERIC_CONTAINERS.has(seg.toLowerCase()));
 
   if (meaningful.length === 0) {
-    // If all parent folders were generic (e.g. "web/templates/login.html"), use the immediate parent
-    const immediateParent = parts[parts.length - 2];
-    return immediateParent.toLowerCase();
+    const immediateParent = parts[parts.length - 2]?.toLowerCase() || 'shared';
+    if (GENERIC_CONTAINERS.has(immediateParent)) return 'shared';
+    return immediateParent;
   }
 
-  // Use the deepest domain segment (e.g. "internal/auth" -> "auth", "accounts/views.py" -> "accounts")
+  // Deepest domain folder segment (e.g. "internal/auth" -> "auth", "accounts/views.py" -> "accounts")
   const domain = meaningful[meaningful.length - 1].replace(/^[(_[]+|[)_\]]+$/g, '');
   return domain.toLowerCase();
 }
@@ -69,7 +87,11 @@ function assignIcon(domainKey: string): WorkspaceIconType {
 }
 
 function formatWorkspaceTitle(domainKey: string): string {
-  if (domainKey === 'root') return 'Server & Gateway';
+  if (domainKey === 'root' || domainKey === 'server') return 'Server & Gateway';
+  if (domainKey === 'auth') return 'Authentication';
+  if (domainKey === 'product') return 'Product Catalog';
+  if (domainKey === 'order') return 'Order & Checkout';
+  if (domainKey === 'shared') return 'Shared Infrastructure';
   if (domainKey === 'ui') return 'UI Primitives';
   return domainKey.charAt(0).toUpperCase() + domainKey.slice(1);
 }
@@ -110,17 +132,27 @@ export function detectWorkspaces(files: ParsedCodeFile[]): FeatureWorkspace[] {
     });
   });
 
-  // Sort: Server/Root first, then by file count descending
+  // Sort order: Auth, Product, Order, Server/Shared, others, then All Files
+  const PREFERRED_ORDER: Record<string, number> = {
+    auth: 1,
+    product: 2,
+    order: 3,
+    shared: 4,
+    root: 5,
+    server: 6,
+  };
+
   workspaces.sort((a, b) => {
-    if (a.id === 'root') return -1;
-    if (b.id === 'root') return 1;
+    const orderA = PREFERRED_ORDER[a.id] || 10;
+    const orderB = PREFERRED_ORDER[b.id] || 10;
+    if (orderA !== orderB) return orderA - orderB;
     return b.fileCount - a.fileCount;
   });
 
   // Append 'All Files' macro view at the end
   workspaces.push({
     id: 'all',
-    name: 'All Files',
+    name: 'All Workspaces',
     iconType: 'grid',
     fileCount: files.length,
     files: files,
