@@ -12,6 +12,7 @@ export interface FeatureWorkspace {
 
 const GENERIC_CONTAINERS = new Set([
   'src',
+  'cmd',
   'internal',
   'app',
   'web',
@@ -39,8 +40,8 @@ export function extractSubsystemKey(filePath: string): string {
     return 'root';
   }
 
-  // Root entrypoint files (e.g. cmd/server/main.go or manage.py)
-  if (parts.length === 2 && (fileName.startsWith('main.') || fileName.startsWith('app.') || fileName.startsWith('server.') || fileName.startsWith('index.'))) {
+  // Root entrypoint files (e.g. cmd/server/main.go or main.go or manage.py)
+  if (fileName.startsWith('main.') || fileName.startsWith('server.') || fileName.startsWith('manage.') || (parts.length === 2 && fileName.startsWith('app.'))) {
     return 'root';
   }
 
@@ -64,8 +65,8 @@ export function extractSubsystemKey(filePath: string): string {
     return immediateParent;
   }
 
-  // Deepest domain folder segment (e.g. "internal/auth" -> "auth", "accounts/views.py" -> "accounts")
-  const domain = meaningful[meaningful.length - 1].replace(/^[(_[]+|[)_\]]+$/g, '');
+  // Top-level domain feature segment (e.g. "internal/auth/..." -> "auth", "app/(dashboard)/..." -> "dashboard")
+  const domain = meaningful[0].replace(/^[(_[]+|[)_\]]+$/g, '');
   return domain.toLowerCase();
 }
 
