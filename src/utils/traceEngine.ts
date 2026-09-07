@@ -1,6 +1,31 @@
 import type { ParsedCodeFile, LayerMode, ExecutionTrace } from '../types/ast';
 import type { CanvasNode, CanvasEdge } from '../types/graph';
 
+// Domain namespace classifier for Feature Islands (Auth, Product, Checkout, Server, Shared)
+function getDomainNamespace(path: string): { key: string; label: string; order: number } {
+  const low = path.toLowerCase();
+  if (low.includes('cmd/') || low.includes('/server/') || low.includes('main.')) {
+    return { key: 'server', label: 'Server Gateway', order: 0 };
+  }
+  if (low.includes('auth') || low.includes('login') || low.includes('register') || low.includes('profile')) {
+    return { key: 'auth', label: 'Authentication', order: 1 };
+  }
+  if (low.includes('product') || low.includes('home') || low.includes('catalog') || low.includes('detail') || low.includes('item')) {
+    return { key: 'product', label: 'Product Catalog', order: 2 };
+  }
+  if (low.includes('order') || low.includes('cart') || low.includes('checkout') || low.includes('billing')) {
+    return { key: 'order', label: 'Order & Checkout', order: 3 };
+  }
+  // Generic folder fallback
+  const parts = path.split('/');
+  const folder = parts.length > 2 ? parts[1] : parts.length > 1 ? parts[0] : 'shared';
+  return {
+    key: folder.toLowerCase(),
+    label: folder.charAt(0).toUpperCase() + folder.slice(1) + ' Foundation',
+    order: 4,
+  };
+}
+
 export function calculateLayout(
   files: ParsedCodeFile[],
   mode: LayerMode,
@@ -10,10 +35,13 @@ export function calculateLayout(
   const nodes: CanvasNode[] = [];
   const edges: CanvasEdge[] = [];
 
-  const NODE_WIDTH = 260;
-  const NODE_HEIGHT = 160;
+  const NODE_WIDTH = 250;
+  const NODE_HEIGHT = 110;
+  const GAP_X = 60;
+  const GAP_Y = 20;
+  const ISLAND_GAP_Y = 70;
 
-  // 1. TRACE MODE: Linear / Branching Horizontal Stage
+  // 1. TRACE MODE: Horizontal Staged Sequence
   if (mode === 'trace' && activeTrace) {
     const uniqueIds = Array.from(
       new Set(
@@ -33,12 +61,12 @@ export function calculateLayout(
         fileId: file.id,
         name: file.name,
         type: file.type,
-        x: 100 + index * (NODE_WIDTH + 120),
-        y: 200 + (index % 2 === 1 ? 30 : -30),
+        x: 80 + index * (NODE_WIDTH + 110),
+        y: 200 + (index % 2 === 1 ? 25 : -25),
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
         label: file.name,
-        badge: isCurrentlyActive ? 'ACTIVE STAGE' : `Stage ${index + 1}`,
+        badge: isCurrentlyActive ? 'ACTIVE' : `Step ${index + 1}`,
         stateCount: file.states.length,
         hookCount: file.hooks.length,
         apiCount: file.apiCalls.length,
@@ -71,10 +99,10 @@ export function calculateLayout(
           fileId: file.id,
           name: file.name,
           type: file.type,
-          x: 100 + (nodes.length - uniqueIds.length) * 90,
-          y: 480,
-          width: 220,
-          height: 110,
+          x: 80 + (nodes.length - uniqueIds.length) * 85,
+          y: 450,
+          width: 200,
+          height: 90,
           label: file.name,
           badge: 'Idle',
           previewType: file.previewType,
@@ -86,82 +114,110 @@ export function calculateLayout(
     return { nodes, edges };
   }
 
-  // 2. UNIVERSAL DOMAIN & ARCHITECTURAL CLUSTER GRID
-  // Categorize files into 5 Clean Architecture tiers across any language (Go, Python, React, Vue, Rails)
-  const tiers: { title: string; colBaseX: number; badge: string; items: ParsedCodeFile[] }[] = [
-    { title: 'Entrypoint / Runner', colBaseX: 60, badge: 'ENTRYPOINT', items: [] },
-    { title: 'HTTP Routes & Handlers', colBaseX: 420, badge: 'CONTROLLER', items: [] },
-    { title: 'Business Services', colBaseX: 780, badge: 'SERVICE', items: [] },
-    { title: 'Data Stores & Repos', colBaseX: 1140, badge: 'STORAGE', items: [] },
-    { title: 'Views & Templates', colBaseX: 1500, badge: 'VIEW', items: [] },
-  ];
+  // 2. FEATURE ISLANDS SPATIAL LAYOUT (Zero Collisions & Domain Separation)
+  // Partition files into ordered Feature Islands
+  const islandMap = new Map<string, { label: string; order: number; files: ParsedCodeFile[] }>();
 
   files.forEach((f) => {
-    const p = f.path.toLowerCase();
-    if (p.includes('cmd/') || p.includes('/server/') || p.includes('main.') || p.includes('app.tsx') || f.code.includes('func main()')) {
-      tiers[0].items.push(f);
-    } else if (f.type === 'api' || p.includes('route') || p.includes('handler') || p.includes('controller') || f.apiCalls.length > 0) {
-      tiers[1].items.push(f);
-    } else if (f.type === 'hook' || p.includes('service') || p.includes('usecase') || p.includes('logic')) {
-      tiers[2].items.push(f);
-    } else if (f.type === 'store' || p.includes('repo') || p.includes('database') || p.includes('model') || p.includes('schema')) {
-      tiers[3].items.push(f);
-    } else {
-      tiers[4].items.push(f);
+    const { key, label, order } = getDomainNamespace(f.path);
+    if (!islandMap.has(key)) {
+      islandMap.set(key, { label, order, files: [] });
     }
+    islandMap.get(key)!.files.push(f);
   });
 
-  // Lay out each tier in a compact 2D multi-column grid (max 4 rows high to prevent 8000px towers!)
-  tiers.forEach((tier) => {
-    tier.items.forEach((file, idx) => {
-      const subCol = Math.floor(idx / 4);
-      const row = idx % 4;
+  const sortedIslands = Array.from(islandMap.values()).sort((a, b) => a.order - b.order);
 
-      nodes.push({
-        id: file.id,
-        fileId: file.id,
-        name: file.name,
-        type: file.type,
-        x: tier.colBaseX + subCol * (NODE_WIDTH + 24),
-        y: 80 + row * (NODE_HEIGHT + 24),
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-        label: file.path,
-        badge: tier.badge,
-        stateCount: file.states.length,
-        hookCount: file.hooks.length,
-        apiCount: file.apiCalls.length,
-        previewType: file.previewType,
-        riskScore: file.blastRadius?.score,
+  let currentIslandY = 80;
+
+  sortedIslands.forEach((island) => {
+    // 4 Architecture Pipeline Columns per Feature: Views -> Controllers -> Services -> Storage
+    const cols: [ParsedCodeFile[], ParsedCodeFile[], ParsedCodeFile[], ParsedCodeFile[]] = [[], [], [], []];
+
+    island.files.forEach((f) => {
+      const p = f.path.toLowerCase();
+      if (f.type === 'page' || p.includes('template') || p.endsWith('.html') || p.endsWith('.js')) {
+        cols[0].push(f); // Col 0: Views, Templates, Client scripts
+      } else if (f.type === 'api' || p.includes('route') || p.includes('handler')) {
+        cols[1].push(f); // Col 1: Routes & HTTP Handlers
+      } else if (f.type === 'hook' || p.includes('service') || p.includes('validator') || p.includes('logic')) {
+        cols[2].push(f); // Col 2: Services & Logic
+      } else {
+        cols[3].push(f); // Col 3: Repositories & Storage
+      }
+    });
+
+    const maxRows = Math.max(1, ...cols.map((c) => c.length));
+
+    cols.forEach((colFiles, colIdx) => {
+      const colX = 60 + colIdx * (NODE_WIDTH + GAP_X);
+      colFiles.forEach((file, rowIdx) => {
+        const nodeY = currentIslandY + rowIdx * (NODE_HEIGHT + GAP_Y);
+
+        nodes.push({
+          id: file.id,
+          fileId: file.id,
+          name: file.name,
+          type: file.type,
+          x: colX,
+          y: nodeY,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+          label: file.path,
+          badge: island.label,
+          stateCount: file.states.length,
+          hookCount: file.hooks.length,
+          apiCount: file.apiCalls.length,
+          previewType: file.previewType,
+          riskScore: file.blastRadius?.score,
+        });
       });
     });
+
+    // Advance to next feature island with safe non-overlapping vertical buffer
+    currentIslandY += maxRows * (NODE_HEIGHT + GAP_Y) + ISLAND_GAP_Y;
   });
 
-  // 3. UNIVERSAL DEPENDENCY LINK RESOLVER (True Import / Reference Resolution)
+  // 3. CLEAN PIPELINE EDGE RESOLVER (Eliminate Spiderweb Over-Connecting)
   const edgeSet = new Set<string>();
 
   files.forEach((src) => {
     files.forEach((tgt) => {
       if (src.id === tgt.id) return;
       const tgtBase = tgt.name.replace(/\.[^.]+$/, '');
-      const parts = tgt.path.split('/');
-      const tgtDir = parts.length > 1 ? parts[parts.length - 2] : '';
+      const srcParts = src.path.split('/');
+      const tgtParts = tgt.path.split('/');
+      const srcDir = srcParts.length > 1 ? srcParts.slice(0, -1).join('/') : '';
+      const tgtDir = tgtParts.length > 1 ? tgtParts.slice(0, -1).join('/') : '';
+      const tgtPkg = tgtParts.length > 1 ? tgtParts[tgtParts.length - 2] : '';
 
-      // Check for matching import, package name, or template inclusion
-      const isImported = src.imports.some((imp) => imp.includes(tgtBase) || (tgtDir && imp.includes(tgtDir)));
-      const isRendered = src.renderedChildren.some((rc) => rc.toLowerCase() === tgtBase.toLowerCase());
-      const isCodeRef = src.code.includes(tgtBase) || (tgtDir && src.code.includes(tgtDir));
+      // Rule A: Cross-package imports (e.g. main.go -> internal/product, order/service -> product)
+      const isCrossImport =
+        srcDir !== tgtDir &&
+        src.imports.some((imp) => imp === tgtPkg || imp === `internal/${tgtPkg}` || imp === tgtBase);
 
-      if (isImported || isRendered || (src.type === 'layout' && isCodeRef && tgt.type !== 'store')) {
-        const edgeKey = `${src.id}->${tgt.id}`;
-        if (!edgeSet.has(edgeKey)) {
-          edgeSet.add(edgeKey);
+      // Rule B: Intra-domain clean pipeline (routes -> handler -> service -> repository)
+      const isDomainPipeline =
+        srcDir === tgtDir &&
+        ((src.path.includes('routes') && tgt.path.includes('handler')) ||
+          (src.path.includes('handler') && tgt.path.includes('service')) ||
+          (src.path.includes('service') && tgt.path.includes('repository')));
+
+      // Rule C: Template partial renders and client script binding (e.g. home.html -> product_card.html)
+      const isRender = src.renderedChildren.some((rc) => rc.toLowerCase() === tgtBase.toLowerCase());
+
+      if (isCrossImport || isDomainPipeline || isRender) {
+        const key = `${src.id}->${tgt.id}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
           edges.push({
             id: `edge-${src.id}-${tgt.id}`,
             from: src.id,
             to: tgt.id,
-            label: isRendered ? 'renders' : tgt.type === 'api' ? 'routes' : 'uses',
-            type: isRendered ? 'render' : tgt.type === 'api' ? 'api' : 'data',
+            label: isRender ? 'renders' : isDomainPipeline ? 'calls' : 'imports',
+            type: isRender ? 'render' : 'data',
+            isActive: false,
+            animated: false,
           });
         }
       }
