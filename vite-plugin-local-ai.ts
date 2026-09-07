@@ -16,17 +16,17 @@ function checkBin(bin: string): boolean {
   }
 }
 
-function spawnTool(tool: string, prompt: string): Promise<string> {
+function spawnTool(tool: string, prompt: string, timeoutMs = 35000): Promise<string> {
   return new Promise((resolve, reject) => {
-    let cmd = 'claude';
-    let args: string[] = ['-p', prompt];
+    let cmd = 'opencode';
+    let args: string[] = ['run', '--pure', prompt];
 
-    if (tool === 'agy') {
+    if (tool === 'claude') {
+      cmd = 'claude';
+      args = ['-p', prompt];
+    } else if (tool === 'agy') {
       cmd = 'agy';
-      args = ['-p', prompt, '--print-timeout', '3m0s', '--dangerously-skip-permissions'];
-    } else if (tool === 'opencode') {
-      cmd = 'opencode';
-      args = ['run', '--pure', prompt];
+      args = ['-p', prompt, '--print-timeout', '30s', '--dangerously-skip-permissions'];
     }
 
     const child = spawn(cmd, args, {
@@ -36,16 +36,32 @@ function spawnTool(tool: string, prompt: string): Promise<string> {
 
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
 
-    child.stdout.on('data', (d) => {
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill('SIGKILL');
+      } catch {}
+      reject(new Error(`CLI tool ${cmd} timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+
+    child.stdout?.on('data', (d) => {
       stdout += d.toString();
     });
-    child.stderr.on('data', (d) => {
+    child.stderr?.on('data', (d) => {
       stderr += d.toString();
     });
 
-    child.on('error', (err) => reject(err));
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      if (!timedOut) reject(err);
+    });
+
     child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) return;
+
       const text = stdout.trim();
       if (code !== 0 && !text) {
         reject(new Error(stderr.trim() || `CLI ${cmd} exited with code ${code}`));
@@ -59,24 +75,27 @@ function spawnTool(tool: string, prompt: string): Promise<string> {
 }
 
 async function runCliTool(tool: string, prompt: string): Promise<string> {
-  const toolsToTry = [tool];
-  if (tool !== 'claude' && checkBin('claude')) toolsToTry.push('claude');
-  if (tool !== 'agy' && checkBin('agy')) toolsToTry.push('agy');
-  if (tool !== 'opencode' && checkBin('opencode')) toolsToTry.push('opencode');
+  // Try the user's chosen tool first (e.g. opencode)
+  try {
+    const out = await spawnTool(tool, prompt);
+    if (out) return out;
+  } catch (err: any) {
+    console.warn(`[Local AI] Primary tool (${tool}) failed or timed out:`, err?.message);
+  }
 
-  let lastErr: any = null;
-  for (const t of toolsToTry) {
+  // If the chosen tool failed, try the other available tools on PATH as graceful failover
+  const fallbacks = ['opencode', 'claude', 'agy'].filter((t) => t !== tool && checkBin(t));
+  for (const fb of fallbacks) {
     try {
-      const out = await spawnTool(t, prompt);
-      if (out && !out.toLowerCase().includes('quota reached')) {
-        return out;
-      }
-    } catch (e) {
-      lastErr = e;
+      console.log(`[Local AI] Attempting fallback tool: ${fb}`);
+      const out = await spawnTool(fb, prompt);
+      if (out) return out;
+    } catch (e: any) {
+      console.warn(`[Local AI] Fallback tool (${fb}) failed:`, e?.message);
     }
   }
 
-  throw lastErr || new Error('CLI tool execution failed');
+  throw new Error(`All available CLI tools failed to execute prompt`);
 }
 
 export function localAiPlugin(): Plugin {
@@ -102,12 +121,12 @@ export function localAiPlugin(): Plugin {
 
         if (url.pathname === '/api/health' && req.method === 'GET') {
           const tools = {
-            agy: checkBin('agy'),
             opencode: checkBin('opencode'),
+            agy: checkBin('agy'),
             claude: checkBin('claude'),
             ollama: checkBin('ollama'),
           };
-          return res.end(JSON.stringify({ status: 'ok', tools, embedded: true }));
+          return res.end(JSON.stringify({ status: 'ok', tools, embedded: true, primary: 'opencode' }));
         }
 
         if (url.pathname === '/api/analyze' && req.method === 'POST') {
@@ -115,7 +134,7 @@ export function localAiPlugin(): Plugin {
           req.on('data', (chunk) => { body += chunk; });
           req.on('end', async () => {
             try {
-              const { tool = 'agy', prompt } = JSON.parse(body || '{}');
+              const { tool = 'opencode', prompt } = JSON.parse(body || '{}');
               if (!prompt) {
                 res.statusCode = 400;
                 return res.end(JSON.stringify({ error: 'Missing prompt' }));
@@ -135,8 +154,8 @@ export function localAiPlugin(): Plugin {
           req.on('data', (chunk) => { body += chunk; });
           req.on('end', async () => {
             try {
-              const { tool = 'agy', file, question, code = '' } = JSON.parse(body || '{}');
-              const prompt = `You are an expert software engineer inspecting the file: ${file}.\n\nSource code excerpt:\n${code.slice(0, 4000)}\n\nQuestion: ${question}\n\nProvide a concise, direct, helpful answer explaining what this code does, what enters it, what it returns, and what is passed.`;
+              const { tool = 'opencode', file, question, code = '' } = JSON.parse(body || '{}');
+              const prompt = `You are an expert software engineer explaining code to a vibe coder.\nFile: ${file}\nSource excerpt:\n${code.slice(0, 4000)}\nQuestion: ${question}\nExplain what happens, what data enters, what code line runs, and what is passed.`;
               const reply = await runCliTool(tool, prompt);
               res.end(JSON.stringify({ reply }));
             } catch (err: any) {

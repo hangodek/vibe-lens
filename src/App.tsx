@@ -10,12 +10,12 @@ import { TracePlaybackBar } from './components/canvas/TracePlaybackBar';
 import { InspectorPanel } from './components/inspector/InspectorPanel';
 import { IngestModal } from './components/sidebar/IngestModal';
 import { AISetupModal } from './components/setup/AISetupModal';
-import { AnalysisScreen } from './components/setup/AnalysisScreen';
 import { ScreenLocatorModal } from './components/inspector/ScreenLocatorModal';
 import { analyzeProjectWithAI } from './utils/aiAnalyzer';
 import type { AnalysisProgress } from './utils/aiAnalyzer';
 import { enrichProjectWithMaster } from './utils/projectEnricher';
 import type { VibeProject } from './types/ast';
+import { Loader2 } from 'lucide-react';
 
 export function App() {
   const {
@@ -108,13 +108,12 @@ export function App() {
   };
 
   const handleProjectIngested = (project: VibeProject) => {
-    const provider = localStorage.getItem('vibe_ai_provider');
-    if (!provider) {
-      setPendingProject(project);
-      setIsAISetupOpen(true);
-    } else {
-      runAIAnalysis(project);
-    }
+    // 1. Instantly render project on canvas in Trace Story mode (0.05s) - zero waiting!
+    loadCustomProject(project);
+    setLayerMode('trace');
+
+    // 2. Trigger opencode AI analysis in background
+    runAIAnalysis(project);
   };
 
   return (
@@ -232,14 +231,25 @@ export function App() {
         }}
       />
 
-      {/* Fullscreen AI Codebase Analyzer Progress Screen */}
+      {/* Floating Non-Blocking AI Execution Flow Status */}
       {isAnalyzing && (
-        <AnalysisScreen
-          projectName={activeProject.name}
-          progress={analysisProgress}
-          activeTool={localStorage.getItem('vibe_cli_tool') || 'agy'}
-          onCancel={() => setIsAnalyzing(false)}
-        />
+        <div className="absolute top-16 right-6 z-40 bg-[#0e0f14]/95 border border-[#5e6ad2] p-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in fade-in">
+          <Loader2 className="w-4 h-4 text-[#828fff] animate-spin shrink-0" />
+          <div className="text-left">
+            <div className="text-xs font-semibold text-[#f7f8f8]">
+              {localStorage.getItem('vibe_cli_tool') || 'OpenCode'} Analyzing Flow...
+            </div>
+            <div className="text-[10px] font-mono text-[#8a8f98]">
+              {analysisProgress.message || 'Extracting step causality...'} ({analysisProgress.percent}%)
+            </div>
+          </div>
+          <button
+            onClick={() => setIsAnalyzing(false)}
+            className="text-xs text-[#8a8f98] hover:text-white p-1 rounded hover:bg-[#1c1d22] cursor-pointer ml-1"
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   );

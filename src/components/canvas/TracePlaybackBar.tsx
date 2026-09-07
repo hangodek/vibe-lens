@@ -5,10 +5,11 @@ import {
   Pause, 
   ChevronRight, 
   ChevronLeft, 
-  Workflow,
-  BookOpen,
-  Terminal,
-  ArrowRight
+  Workflow, 
+  BookOpen, 
+  Terminal, 
+  ArrowRight,
+  Code2
 } from 'lucide-react';
 
 interface TracePlaybackBarProps {
@@ -158,33 +159,65 @@ export function TracePlaybackBar({
       {currentStep && (
         <div className="bg-[#121316] border border-[#23252a] rounded-lg p-3 flex flex-col gap-2 shadow-inner">
           {viewMode === 'storybook' && story ? (
-            <div>
-              <div className="flex items-center gap-2 mb-1">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
                 <span className="px-2 py-0.5 rounded-full bg-[#5e6ad2]/20 text-[#828fff] text-[10px] font-mono font-bold">
                   CHAPTER {story.chapterNumber}: {story.chapterTitle.toUpperCase()}
                 </span>
+                {currentStep.dataPassed && (
+                  <span className="text-[10px] font-mono text-[#34d399] bg-[#34d399]/10 px-2 py-0.5 rounded border border-[#34d399]/20 truncate max-w-[280px]">
+                    Passed: {currentStep.dataPassed}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-[#f7f8f8] leading-relaxed font-medium">
                 "{story.story}"
               </p>
-              <div className="mt-2 pt-2 border-t border-[#1c1d22] flex items-center gap-1.5 text-[11px] text-[#8a8f98]">
+
+              {currentStep.codeLine && (
+                <div className="bg-[#08090d] border border-[#23252a] rounded-md px-2.5 py-1.5 flex items-center justify-between text-xs font-mono text-[#34d399]">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Code2 className="w-3.5 h-3.5 text-[#828fff] shrink-0" />
+                    <code className="truncate">{currentStep.codeLine}</code>
+                  </div>
+                  {currentStep.lineHighlight ? (
+                    <span className="text-[10px] text-[#8a8f98] shrink-0 ml-2">Line {currentStep.lineHighlight}</span>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="pt-1.5 border-t border-[#1c1d22] flex items-center gap-1.5 text-[11px] text-[#8a8f98]">
                 <ArrowRight className="w-3 h-3 text-[#5e6ad2] shrink-0" />
-                <span><strong className="text-[#d0d6e0]">Why this happens:</strong> {story.humanCausality}</span>
+                <span><strong className="text-[#d0d6e0]">Why this happens:</strong> {currentStep.codeExplanation || story.humanCausality}</span>
               </div>
             </div>
           ) : (
-            <div className="flex items-start gap-2.5">
-              <div className="px-2 py-0.5 rounded bg-[#5e6ad2]/20 text-[#828fff] text-[10px] font-mono shrink-0 mt-0.5">
-                STEP {currentStep.stepNumber}
+            <div className="space-y-2">
+              <div className="flex items-start gap-2.5">
+                <div className="px-2 py-0.5 rounded bg-[#5e6ad2]/20 text-[#828fff] text-[10px] font-mono shrink-0 mt-0.5">
+                  STEP {currentStep.stepNumber}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h5 className="text-xs font-semibold text-[#f7f8f8]">
+                    {currentStep.title}
+                  </h5>
+                  <p className="text-[11px] text-[#d0d6e0] mt-0.5 leading-relaxed">
+                    {currentStep.description}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <h5 className="text-xs font-semibold text-[#f7f8f8]">
-                  {currentStep.title}
-                </h5>
-                <p className="text-[11px] text-[#d0d6e0] mt-0.5 leading-relaxed">
-                  {currentStep.description}
-                </p>
-              </div>
+
+              {currentStep.codeLine && (
+                <div className="bg-[#08090d] border border-[#23252a] rounded-md px-2.5 py-1.5 flex items-center justify-between text-xs font-mono text-[#34d399]">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Code2 className="w-3.5 h-3.5 text-[#828fff] shrink-0" />
+                    <code className="truncate">{currentStep.codeLine}</code>
+                  </div>
+                  {currentStep.lineHighlight ? (
+                    <span className="text-[10px] text-[#8a8f98] shrink-0 ml-2">Line {currentStep.lineHighlight}</span>
+                  ) : null}
+                </div>
+              )}
             </div>
           )}
         </div>

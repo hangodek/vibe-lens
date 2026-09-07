@@ -142,6 +142,9 @@ export interface TraceStep {
   payload?: Record<string, unknown>;
   fileSnippet?: string;
   lineHighlight?: number;
+  codeLine?: string;
+  dataPassed?: string;
+  codeExplanation?: string;
   storybook?: StorybookNarrative;
 }
 

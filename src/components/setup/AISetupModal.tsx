@@ -26,7 +26,7 @@ export function AISetupModal({ isOpen, onClose, onSaved }: AISetupModalProps) {
     const storedProvider = localStorage.getItem('vibe_ai_provider') || 'local_cli';
     if (storedProvider === 'local_cli') {
       setActiveTab('cli');
-      setSelectedTool((localStorage.getItem('vibe_cli_tool') as any) || 'agy');
+      setSelectedTool((localStorage.getItem('vibe_cli_tool') as any) || 'opencode');
     } else {
       setActiveTab('cloud');
       setCloudProvider(storedProvider as any);
@@ -116,9 +116,9 @@ export function AISetupModal({ isOpen, onClose, onSaved }: AISetupModalProps) {
               <label className="text-xs font-mono text-[#d0d6e0]">Select Active CLI Agent</label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'claude', label: 'claude', name: 'Claude Code (Ready)' },
+                  { id: 'opencode', label: 'opencode', name: 'OpenCode CLI (Company Default)' },
                   { id: 'agy', label: 'agy', name: 'Antigravity CLI' },
-                  { id: 'opencode', label: 'opencode', name: 'OpenCode CLI' },
+                  { id: 'claude', label: 'claude', name: 'Claude Code' },
                 ].map((t) => {
                   const detected = companionStatus.tools[t.id as keyof typeof companionStatus.tools];
                   const isSelected = selectedTool === t.id;

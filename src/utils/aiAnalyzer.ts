@@ -71,10 +71,13 @@ Return ONLY a valid JSON object matching this exact schema:
       "title": "User Login & Session Flow",
       "description": "Visitor logs in from HTML form down to database query.",
       "steps": [
-        { "file": "web/templates/auth/login.html", "action": "User submits credentials" },
-        { "file": "internal/auth/handler.go", "action": "Validates request and calls service" },
-        { "file": "internal/auth/service.go", "action": "Verifies bcrypt password hash" },
-        { "file": "internal/auth/repository.go", "action": "SELECT * FROM users WHERE email = $1" }
+        {
+          "file": "file path in chain",
+          "action": "Human explanation of what happens in this step",
+          "dataPassed": "Parameters or payload passed to the next step",
+          "codeLine": "The exact line of code responsible",
+          "codeExplanation": "Why this line exists and what it does"
+        }
       ]
     }
   ],

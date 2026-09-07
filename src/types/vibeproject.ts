@@ -44,6 +44,9 @@ export interface VibeMasterStep {
   file: string;
   action: string;
   dataTransformed?: string;
+  dataPassed?: string;
+  codeLine?: string;
+  codeExplanation?: string;
   lineHighlight?: number;
 }
 

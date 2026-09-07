@@ -11,7 +11,7 @@ export function useCodebase() {
   const [selectedFileId, setSelectedFileId] = useState<string | null>(
     PRESET_PROJECTS[0].files[0]?.id || null
   );
-  const [layerMode, setLayerMode] = useState<LayerMode>('screen');
+  const [layerMode, setLayerMode] = useState<LayerMode>('trace');
   const [viewScope, setViewScope] = useState<'core' | 'all'>('core');
   const [activeTraceIndex, setActiveTraceIndex] = useState(0);
   const [activeTraceId, setActiveTraceId] = useState<string>('');

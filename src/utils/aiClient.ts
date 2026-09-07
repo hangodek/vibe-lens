@@ -8,10 +8,10 @@ export interface AIConfig {
 
 export function getStoredAIConfig(): AIConfig {
   if (typeof window === 'undefined') {
-    return { provider: 'local_cli', cliTool: 'agy' };
+    return { provider: 'local_cli', cliTool: 'opencode' };
   }
   const provider = (localStorage.getItem('vibe_ai_provider') || 'local_cli') as AIConfig['provider'];
-  const cliTool = (localStorage.getItem('vibe_cli_tool') || 'claude') as AIConfig['cliTool'];
+  const cliTool = (localStorage.getItem('vibe_cli_tool') || 'opencode') as AIConfig['cliTool'];
   const apiKey = localStorage.getItem(`vibe_key_${provider}`) || '';
   const baseUrl = localStorage.getItem('vibe_local_url') || 'http://localhost:4242';
   const model = localStorage.getItem('vibe_local_model') || '';

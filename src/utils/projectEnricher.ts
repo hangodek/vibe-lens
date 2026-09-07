@@ -69,15 +69,18 @@ export function enrichProjectWithMaster(
           id: `ai-step-${jIdx}-${sIdx}`,
           stepNumber: sIdx + 1,
           title: step.action,
-          description: `${step.action}${step.dataTransformed ? ` (Data: ${step.dataTransformed})` : ''}`,
+          description: step.action,
           activeNodeId: fileId,
           targetNodeId: nextFileId,
           lineHighlight: step.lineHighlight,
+          codeLine: step.codeLine,
+          dataPassed: step.dataPassed || step.dataTransformed,
+          codeExplanation: step.codeExplanation,
           storybook: {
             chapterNumber: sIdx + 1,
             chapterTitle: `Step ${sIdx + 1}: ${step.action}`,
             story: `[${step.file}] ${step.action}`,
-            humanCausality: step.dataTransformed || 'Data flows cleanly through domain boundaries.',
+            humanCausality: step.codeExplanation || step.dataPassed || step.dataTransformed || 'Data flows cleanly through domain boundaries.',
           },
         };
       });
