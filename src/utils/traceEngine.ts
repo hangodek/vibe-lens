@@ -10,22 +10,19 @@ export function calculateLayout(
   const nodes: CanvasNode[] = [];
   const edges: CanvasEdge[] = [];
 
-  const NODE_WIDTH = 270;
-  const NODE_HEIGHT = 175;
-  const HORIZONTAL_GAP = 140;
-  const VERTICAL_GAP = 80;
+  const NODE_WIDTH = 260;
+  const NODE_HEIGHT = 160;
 
+  // 1. TRACE MODE: Linear / Branching Horizontal Stage
   if (mode === 'trace' && activeTrace) {
-    // Collect both active and target node IDs to ensure all interacting nodes are on the main workflow stage
     const uniqueIds = Array.from(
       new Set(
         activeTrace.steps.flatMap((s) => [s.activeNodeId, s.targetNodeId]).filter(Boolean) as string[]
       )
     );
 
-    // Place trace nodes horizontally across stages
     uniqueIds.forEach((fileId, index) => {
-      const file = files.find(f => f.id === fileId);
+      const file = files.find((f) => f.id === fileId);
       if (!file) return;
 
       const currentStep = activeTrace.steps[activeStepIndex];
@@ -36,12 +33,12 @@ export function calculateLayout(
         fileId: file.id,
         name: file.name,
         type: file.type,
-        x: 100 + index * (NODE_WIDTH + HORIZONTAL_GAP),
-        y: 200 + (index % 2 === 1 ? 40 : -40),
+        x: 100 + index * (NODE_WIDTH + 120),
+        y: 200 + (index % 2 === 1 ? 30 : -30),
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
         label: file.name,
-        badge: isCurrentlyActive ? 'ACTIVE EXECUTION' : `Stage ${index + 1}`,
+        badge: isCurrentlyActive ? 'ACTIVE STAGE' : `Stage ${index + 1}`,
         stateCount: file.states.length,
         hookCount: file.hooks.length,
         apiCount: file.apiCalls.length,
@@ -50,25 +47,23 @@ export function calculateLayout(
       });
     });
 
-    // Add trace edges between consecutive steps
     for (let i = 0; i < activeTrace.steps.length - 1; i++) {
       const step = activeTrace.steps[i];
       const nextStep = activeTrace.steps[i + 1];
       const isPastOrActive = i < activeStepIndex;
-      const isCurrentTransition = i === activeStepIndex - 1;
+      const isCurrent = i === activeStepIndex - 1;
 
       edges.push({
         id: `trace-edge-${i}`,
         from: step.activeNodeId,
         to: step.targetNodeId || nextStep.activeNodeId,
-        label: `Step ${step.stepNumber} → ${nextStep.stepNumber}`,
+        label: `Ch.${step.stepNumber} → Ch.${nextStep.stepNumber}`,
         type: 'event',
-        isActive: isCurrentTransition || isPastOrActive,
-        animated: isCurrentTransition
+        isActive: isCurrent || isPastOrActive,
+        animated: isCurrent,
       });
     }
 
-    // Include other files placed subtly below if they exist
     files.forEach((file) => {
       if (!uniqueIds.includes(file.id)) {
         nodes.push({
@@ -76,10 +71,10 @@ export function calculateLayout(
           fileId: file.id,
           name: file.name,
           type: file.type,
-          x: 100 + nodes.length * 80,
+          x: 100 + (nodes.length - uniqueIds.length) * 90,
           y: 480,
           width: 220,
-          height: 120,
+          height: 110,
           label: file.name,
           badge: 'Idle',
           previewType: file.previewType,
@@ -91,155 +86,86 @@ export function calculateLayout(
     return { nodes, edges };
   }
 
-  if (mode === 'data') {
-    // Categorize: Stores & Contexts -> Hooks & Logic -> UI Consumers -> API Targets
-    const columns = [
-      { items: files.filter(f => f.type === 'store' || f.type === 'context'), colX: 60 },
-      { items: files.filter(f => f.type === 'hook'), colX: 420 },
-      { items: files.filter(f => f.type === 'page' || f.type === 'component' || f.type === 'layout'), colX: 780 },
-      { items: files.filter(f => f.type === 'api'), colX: 1140 },
-    ];
+  // 2. UNIVERSAL DOMAIN & ARCHITECTURAL CLUSTER GRID
+  // Categorize files into 5 Clean Architecture tiers across any language (Go, Python, React, Vue, Rails)
+  const tiers: { title: string; colBaseX: number; badge: string; items: ParsedCodeFile[] }[] = [
+    { title: 'Entrypoint / Runner', colBaseX: 60, badge: 'ENTRYPOINT', items: [] },
+    { title: 'HTTP Routes & Handlers', colBaseX: 420, badge: 'CONTROLLER', items: [] },
+    { title: 'Business Services', colBaseX: 780, badge: 'SERVICE', items: [] },
+    { title: 'Data Stores & Repos', colBaseX: 1140, badge: 'STORAGE', items: [] },
+    { title: 'Views & Templates', colBaseX: 1500, badge: 'VIEW', items: [] },
+  ];
 
-    columns.forEach(({ items, colX }) => {
-      items.forEach((file, rowIdx) => {
-        nodes.push({
-          id: file.id,
-          fileId: file.id,
-          name: file.name,
-          type: file.type,
-          x: colX,
-          y: 80 + rowIdx * (NODE_HEIGHT + VERTICAL_GAP),
-          width: NODE_WIDTH,
-          height: NODE_HEIGHT,
-          label: file.name,
-          badge: file.type.toUpperCase(),
-          stateCount: file.states.length,
-          hookCount: file.hooks.length,
-          apiCount: file.apiCalls.length,
-          previewType: file.previewType,
-          riskScore: file.blastRadius?.score,
-        });
-      });
-    });
-
-    // Build data connections
-    files.forEach(source => {
-      // If a component imports/uses a hook
-      source.hooks.forEach(hookName => {
-        const targetHook = files.find(f => f.name.includes(hookName) || f.components.includes(hookName));
-        if (targetHook && targetHook.id !== source.id) {
-          edges.push({
-            id: `edge-${targetHook.id}-${source.id}`,
-            from: targetHook.id,
-            to: source.id,
-            label: 'feeds state',
-            type: 'data',
-            animated: true
-          });
-        }
-      });
-
-      // If a hook or component calls an API
-      source.apiCalls.forEach(api => {
-        const targetApi = files.find(f => f.type === 'api');
-        if (targetApi) {
-          edges.push({
-            id: `api-edge-${source.id}-${targetApi.id}`,
-            from: source.id,
-            to: targetApi.id,
-            label: api.method,
-            type: 'api'
-          });
-        }
-      });
-    });
-
-    return { nodes, edges };
-  }
-
-  // Default: Screen / UI Layout Flow
-  const rootPage = files.find(f => f.type === 'page' || f.type === 'layout') || files[0];
-  const children = files.filter(f => f.id !== rootPage?.id);
-
-  if (rootPage) {
-    nodes.push({
-      id: rootPage.id,
-      fileId: rootPage.id,
-      name: rootPage.name,
-      type: rootPage.type,
-      x: 100,
-      y: 220,
-      width: NODE_WIDTH + 20,
-      height: NODE_HEIGHT + 10,
-      label: rootPage.name,
-      badge: 'ROOT ROUTE',
-      isEntry: true,
-      stateCount: rootPage.states.length,
-      hookCount: rootPage.hooks.length,
-      previewType: rootPage.previewType,
-      riskScore: rootPage.blastRadius?.score,
-    });
-  }
-
-  // Lay out children in a tree grid
-  const childComps = children.filter(c => c.type === 'component');
-  const helpers = children.filter(c => c.type !== 'component');
-
-  childComps.forEach((file, idx) => {
-    const nodeY = 80 + idx * (NODE_HEIGHT + 40);
-    nodes.push({
-      id: file.id,
-      fileId: file.id,
-      name: file.name,
-      type: file.type,
-      x: 480,
-      y: nodeY,
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-      label: file.name,
-      badge: 'SUB-VIEW',
-      stateCount: file.states.length,
-      previewType: file.previewType,
-      riskScore: file.blastRadius?.score,
-    });
-
-    if (rootPage) {
-      edges.push({
-        id: `render-${rootPage.id}-${file.id}`,
-        from: rootPage.id,
-        to: file.id,
-        label: 'renders',
-        type: 'render'
-      });
+  files.forEach((f) => {
+    const p = f.path.toLowerCase();
+    if (p.includes('cmd/') || p.includes('/server/') || p.includes('main.') || p.includes('app.tsx') || f.code.includes('func main()')) {
+      tiers[0].items.push(f);
+    } else if (f.type === 'api' || p.includes('route') || p.includes('handler') || p.includes('controller') || f.apiCalls.length > 0) {
+      tiers[1].items.push(f);
+    } else if (f.type === 'hook' || p.includes('service') || p.includes('usecase') || p.includes('logic')) {
+      tiers[2].items.push(f);
+    } else if (f.type === 'store' || p.includes('repo') || p.includes('database') || p.includes('model') || p.includes('schema')) {
+      tiers[3].items.push(f);
+    } else {
+      tiers[4].items.push(f);
     }
   });
 
-  helpers.forEach((file, idx) => {
-    nodes.push({
-      id: file.id,
-      fileId: file.id,
-      name: file.name,
-      type: file.type,
-      x: 840,
-      y: 120 + idx * (NODE_HEIGHT + 50),
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-      label: file.name,
-      badge: file.type.toUpperCase(),
-      previewType: file.previewType,
-      riskScore: file.blastRadius?.score,
-    });
+  // Lay out each tier in a compact 2D multi-column grid (max 4 rows high to prevent 8000px towers!)
+  tiers.forEach((tier) => {
+    tier.items.forEach((file, idx) => {
+      const subCol = Math.floor(idx / 4);
+      const row = idx % 4;
 
-    // Link helper to child component or root page
-    if (childComps[0]) {
-      edges.push({
-        id: `helper-${childComps[0].id}-${file.id}`,
-        from: childComps[0].id,
-        to: file.id,
-        label: file.type === 'api' ? 'requests' : 'binds',
-        type: file.type === 'api' ? 'api' : 'data'
+      nodes.push({
+        id: file.id,
+        fileId: file.id,
+        name: file.name,
+        type: file.type,
+        x: tier.colBaseX + subCol * (NODE_WIDTH + 24),
+        y: 80 + row * (NODE_HEIGHT + 24),
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+        label: file.path,
+        badge: tier.badge,
+        stateCount: file.states.length,
+        hookCount: file.hooks.length,
+        apiCount: file.apiCalls.length,
+        previewType: file.previewType,
+        riskScore: file.blastRadius?.score,
       });
-    }
+    });
+  });
+
+  // 3. UNIVERSAL DEPENDENCY LINK RESOLVER (True Import / Reference Resolution)
+  const edgeSet = new Set<string>();
+
+  files.forEach((src) => {
+    files.forEach((tgt) => {
+      if (src.id === tgt.id) return;
+      const tgtBase = tgt.name.replace(/\.[^.]+$/, '');
+      const parts = tgt.path.split('/');
+      const tgtDir = parts.length > 1 ? parts[parts.length - 2] : '';
+
+      // Check for matching import, package name, or template inclusion
+      const isImported = src.imports.some((imp) => imp.includes(tgtBase) || (tgtDir && imp.includes(tgtDir)));
+      const isRendered = src.renderedChildren.some((rc) => rc.toLowerCase() === tgtBase.toLowerCase());
+      const isCodeRef = src.code.includes(tgtBase) || (tgtDir && src.code.includes(tgtDir));
+
+      if (isImported || isRendered || (src.type === 'layout' && isCodeRef && tgt.type !== 'store')) {
+        const edgeKey = `${src.id}->${tgt.id}`;
+        if (!edgeSet.has(edgeKey)) {
+          edgeSet.add(edgeKey);
+          edges.push({
+            id: `edge-${src.id}-${tgt.id}`,
+            from: src.id,
+            to: tgt.id,
+            label: isRendered ? 'renders' : tgt.type === 'api' ? 'routes' : 'uses',
+            type: isRendered ? 'render' : tgt.type === 'api' ? 'api' : 'data',
+          });
+        }
+      }
+    });
   });
 
   return { nodes, edges };
