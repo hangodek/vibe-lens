@@ -5,6 +5,7 @@ import { StudioHeader } from './components/header/StudioHeader';
 import { PresetDrawer } from './components/sidebar/PresetDrawer';
 import { FileExplorer } from './components/sidebar/FileExplorer';
 import { GraphCanvas } from './components/canvas/GraphCanvas';
+import { WorkspaceBar } from './components/canvas/WorkspaceBar';
 import { TracePlaybackBar } from './components/canvas/TracePlaybackBar';
 import { InspectorPanel } from './components/inspector/InspectorPanel';
 import { IngestModal } from './components/sidebar/IngestModal';
@@ -17,12 +18,15 @@ export function App() {
     allProjects,
     allFiles,
     displayedFiles,
+    workspaces,
+    activeWorkspaceId,
     selectedFile,
     selectedFileId,
     layerMode,
     viewScope,
     nodes,
     edges,
+    setActiveWorkspaceId,
     setSelectedFileId,
     setLayerMode,
     setViewScope,
@@ -94,35 +98,44 @@ export function App() {
           />
         </aside>
 
-        {/* Center: Interactive Graph Canvas */}
-        <main className="flex-1 h-full relative overflow-hidden">
-          {layerMode === 'trace' && (
-            <TracePlaybackBar
-              traces={activeProject.traces}
-              selectedTraceId={trace.selectedTraceId}
-              activeTrace={trace.activeTrace}
-              activeStepIndex={trace.activeStepIndex}
-              currentStep={trace.currentStep}
-              isPlaying={trace.isPlaying}
-              onSelectTrace={trace.selectTrace}
-              onTogglePlay={trace.handleTogglePlay}
-              onNext={trace.handleNext}
-              onPrev={trace.handlePrev}
-              onJumpToStep={trace.setActiveStepIndex}
-            />
-          )}
-
-          <GraphCanvas
-            nodes={nodes}
-            edges={edges}
-            selectedFileId={selectedFileId}
-            activeTraceStepNodeId={layerMode === 'trace' ? trace.currentStep?.activeNodeId : undefined}
-            scopeKey={`${activeProject.id}-${layerMode}-${viewScope}`}
-            onSelectNode={(fileId) => {
-              setSelectedFileId(fileId);
-              setIsInspectorOpen(true);
-            }}
+        {/* Center: Interactive Graph Canvas with Dedicated Feature Workspaces */}
+        <main className="flex-1 h-full relative overflow-hidden flex flex-col">
+          {/* Feature Workspace Switcher Bar (Strictly SVG icons, NO emojis) */}
+          <WorkspaceBar
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onSelectWorkspace={setActiveWorkspaceId}
           />
+
+          <div className="flex-1 relative overflow-hidden">
+            {layerMode === 'trace' && (
+              <TracePlaybackBar
+                traces={activeProject.traces}
+                selectedTraceId={trace.selectedTraceId}
+                activeTrace={trace.activeTrace}
+                activeStepIndex={trace.activeStepIndex}
+                currentStep={trace.currentStep}
+                isPlaying={trace.isPlaying}
+                onSelectTrace={trace.selectTrace}
+                onTogglePlay={trace.handleTogglePlay}
+                onNext={trace.handleNext}
+                onPrev={trace.handlePrev}
+                onJumpToStep={trace.setActiveStepIndex}
+              />
+            )}
+
+            <GraphCanvas
+              nodes={nodes}
+              edges={edges}
+              selectedFileId={selectedFileId}
+              activeTraceStepNodeId={layerMode === 'trace' ? trace.currentStep?.activeNodeId : undefined}
+              scopeKey={`${activeProject.id}-${layerMode}-${activeWorkspaceId}-${viewScope}`}
+              onSelectNode={(fileId) => {
+                setSelectedFileId(fileId);
+                setIsInspectorOpen(true);
+              }}
+            />
+          </div>
         </main>
 
         {/* Right Sidebar: Inspector & Mental Model Drawer */}
@@ -144,7 +157,7 @@ export function App() {
         onClose={() => setIsScreenLocatorOpen(false)}
       />
 
-      {/* 4-Tier Ingestion Modal Hub (Folder, GitHub, Zip, Paste) */}
+      {/* 4-Tier Ingestion Modal Hub */}
       <IngestModal
         isOpen={isIngestOpen}
         onClose={() => setIsIngestOpen(false)}
