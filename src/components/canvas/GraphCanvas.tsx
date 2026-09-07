@@ -75,11 +75,9 @@ export function GraphCanvasComponent({
         backgroundPosition: `${viewport.x}px ${viewport.y}px`,
       }}
     >
-      {/* Transformed Stage - High Performance GPU Layer */}
+      {/* Transformed Stage - High Performance GPU Layer without Transition Lag */}
       <div
-        className={`absolute origin-top-left will-change-transform ${
-          isPanning ? '' : 'transition-transform duration-100 ease-out'
-        }`}
+        className="absolute origin-top-left will-change-transform"
         style={{
           transform: `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.zoom})`,
           width: '5000px',
@@ -93,16 +91,11 @@ export function GraphCanvasComponent({
             const toNode = nodeMap.get(edge.to);
             if (!fromNode || !toNode) return null;
 
-            const isHoverHighlighted = connectedEdgeIds.has(edge.id);
-
             return (
               <ConnectionEdge
                 key={edge.id}
-                edge={{
-                  ...edge,
-                  isActive: edge.isActive || isHoverHighlighted,
-                  animated: edge.animated || isHoverHighlighted,
-                }}
+                edge={edge}
+                isHighlighted={connectedEdgeIds.has(edge.id)}
                 fromNode={fromNode}
                 toNode={toNode}
               />
@@ -120,7 +113,7 @@ export function GraphCanvasComponent({
                 key={node.id}
                 onMouseEnter={() => setHoveredNodeId(node.fileId)}
                 onMouseLeave={() => setHoveredNodeId(null)}
-                className={`transition-opacity duration-150 ${isFaded ? 'opacity-40' : 'opacity-100'}`}
+                style={{ opacity: isFaded ? 0.35 : 1 }}
               >
                 <GraphNode
                   node={node}

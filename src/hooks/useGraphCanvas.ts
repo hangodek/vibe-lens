@@ -10,8 +10,9 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
 
-  // Reset custom node drag positions whenever scope (project or layer mode) changes
+  // Reset custom node drag positions whenever scope changes
   useEffect(() => {
     setNodePositions({});
   }, [scopeKey]);
@@ -22,7 +23,6 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     if (!el) return;
 
     const handleNativeWheel = (e: globalThis.WheelEvent) => {
-      // Prevent browser default pinch-to-zoom and whole-page scrolling
       e.preventDefault();
       e.stopPropagation();
 
@@ -33,16 +33,12 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
       setViewport((prev) => {
         let zoomFactor = 1;
         if (e.ctrlKey) {
-          // Trackpad pinch gesture
           zoomFactor = Math.exp(-e.deltaY * 0.015);
         } else {
-          // Standard mouse wheel
           zoomFactor = e.deltaY < 0 ? 1.09 : 0.91;
         }
 
-        const nextZoom = Math.min(Math.max(prev.zoom * zoomFactor, 0.25), 2.5);
-
-        // Focal zoom: zoom into the exact position under the mouse cursor
+        const nextZoom = Math.min(Math.max(prev.zoom * zoomFactor, 0.2), 2.5);
         const newX = mouseX - (mouseX - prev.x) * (nextZoom / prev.zoom);
         const newY = mouseY - (mouseY - prev.y) * (nextZoom / prev.zoom);
 
@@ -60,7 +56,7 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     };
   }, []);
 
-  // Pan canvas via mouse drag
+  // Pan canvas via mouse drag with hardware vsync requestAnimationFrame
   const handleMouseDown = useCallback((e: MouseEvent) => {
     if ((e.target as HTMLElement).closest('.canvas-node')) return;
     setIsPanning(true);
@@ -68,41 +64,39 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
   }, [viewport]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isPanning) {
-      setViewport((prev) => ({
-        ...prev,
-        x: e.clientX - panStart.x,
-        y: e.clientY - panStart.y,
-      }));
-    } else if (draggingNodeId) {
-      const newX = (e.clientX - viewport.x) / viewport.zoom - dragOffset.x;
-      const newY = (e.clientY - viewport.y) / viewport.zoom - dragOffset.y;
-      setNodePositions((prev) => ({
-        ...prev,
-        [draggingNodeId]: { x: Math.round(newX), y: Math.round(newY) }
-      }));
-    }
+    if (!isPanning && !draggingNodeId) return;
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    rafRef.current = requestAnimationFrame(() => {
+      if (isPanning) {
+        setViewport((prev) => ({
+          ...prev,
+          x: clientX - panStart.x,
+          y: clientY - panStart.y,
+        }));
+      } else if (draggingNodeId) {
+        const newX = (clientX - viewport.x) / viewport.zoom - dragOffset.x;
+        const newY = (clientY - viewport.y) / viewport.zoom - dragOffset.y;
+        setNodePositions((prev) => ({
+          ...prev,
+          [draggingNodeId]: { x: Math.round(newX), y: Math.round(newY) }
+        }));
+      }
+    });
   }, [isPanning, panStart, draggingNodeId, viewport, dragOffset]);
 
   const handleMouseUp = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     setIsPanning(false);
     setDraggingNodeId(null);
   }, []);
 
-  const zoomIn = () => {
-    setViewport((v) => {
-      const nextZoom = Math.min(v.zoom + 0.15, 2.5);
-      return { ...v, zoom: nextZoom };
-    });
-  };
-
-  const zoomOut = () => {
-    setViewport((v) => {
-      const nextZoom = Math.max(v.zoom - 0.15, 0.25);
-      return { ...v, zoom: nextZoom };
-    });
-  };
-
+  const zoomIn = () => setViewport((v) => ({ ...v, zoom: Math.min(v.zoom + 0.15, 2.5) }));
+  const zoomOut = () => setViewport((v) => ({ ...v, zoom: Math.max(v.zoom - 0.15, 0.2) }));
   const resetView = () => setViewport({ x: 60, y: 50, zoom: 0.85 });
 
   // Auto-fit / Frame All camera
@@ -130,7 +124,7 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
 
     const zoomX = (width - 100) / graphWidth;
     const zoomY = (height - 100) / graphHeight;
-    const targetZoom = Math.min(Math.max(Math.min(zoomX, zoomY), 0.35), 1.15);
+    const targetZoom = Math.min(Math.max(Math.min(zoomX, zoomY), 0.3), 1.1);
 
     const centerX = minX + (maxX - minX) / 2;
     const centerY = minY + (maxY - minY) / 2;

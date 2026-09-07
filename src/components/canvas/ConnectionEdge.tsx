@@ -6,9 +6,10 @@ interface ConnectionEdgeProps {
   edge: CanvasEdge;
   fromNode: CanvasNode;
   toNode: CanvasNode;
+  isHighlighted?: boolean;
 }
 
-function ConnectionEdgeComponent({ edge, fromNode, toNode }: ConnectionEdgeProps) {
+function ConnectionEdgeComponent({ edge, fromNode, toNode, isHighlighted = false }: ConnectionEdgeProps) {
   // Determine relative layout direction to prevent reverse knotting / looping
   const rawStartX = fromNode.x + fromNode.width;
   const rawEndX = toNode.x;
@@ -54,34 +55,35 @@ function ConnectionEdgeComponent({ edge, fromNode, toNode }: ConnectionEdgeProps
   const midY = (startY + endY) / 2;
 
   const style = EDGE_TYPE_STYLES[edge.type] || EDGE_TYPE_STYLES.render;
-  const strokeColor = edge.isActive ? style.activeStroke : style.stroke;
-  const strokeWidth = edge.isActive ? 2.5 : 1.5;
+  const active = edge.isActive || isHighlighted;
+  const strokeColor = active ? style.activeStroke : style.stroke;
+  const strokeWidth = active ? 2.5 : 1.5;
 
   return (
-    <g className="transition-all duration-300">
-      {/* Background shadow stroke for contrast */}
+    <g>
+      {/* Background shadow stroke for high-contrast visibility */}
       <path
         d={pathD}
         fill="none"
         stroke="#010102"
-        strokeWidth={strokeWidth + 3}
+        strokeWidth={strokeWidth + 2.5}
         strokeLinecap="round"
       />
 
-      {/* Main connection line */}
+      {/* Main connection line: zero animations when idle for 60 FPS performance */}
       <path
         d={pathD}
         fill="none"
         stroke={strokeColor}
         strokeWidth={strokeWidth}
-        strokeDasharray={edge.animated || edge.type === 'data' ? '6 6' : style.strokeDasharray}
-        className={edge.animated ? 'animate-edge-flow' : ''}
+        strokeDasharray={active ? '6 6' : style.strokeDasharray}
+        className={active ? 'animate-edge-flow' : ''}
         strokeLinecap="round"
-        opacity={edge.isActive ? 1 : 0.85}
+        opacity={active ? 1 : 0.75}
       />
 
-      {/* Edge label pill if provided */}
-      {edge.label && (
+      {/* Edge label pill: only rendered when line is active/hovered to avoid cluttering */}
+      {active && edge.label && (
         <g transform={`translate(${midX}, ${midY})`}>
           <rect
             x={-edge.label.length * 3.5 - 8}
@@ -90,13 +92,13 @@ function ConnectionEdgeComponent({ edge, fromNode, toNode }: ConnectionEdgeProps
             height={20}
             rx={10}
             fill="#08090a"
-            stroke={edge.isActive ? style.activeStroke : '#23252a'}
+            stroke={style.activeStroke}
             strokeWidth={1}
           />
           <text
             textAnchor="middle"
             dominantBaseline="middle"
-            fill={edge.isActive ? '#f7f8f8' : '#8a8f98'}
+            fill="#f7f8f8"
             fontSize="10"
             fontFamily="JetBrains Mono, monospace"
             className="select-none pointer-events-none"
@@ -110,7 +112,7 @@ function ConnectionEdgeComponent({ edge, fromNode, toNode }: ConnectionEdgeProps
       <circle
         cx={endX}
         cy={endY}
-        r={3.5}
+        r={active ? 4 : 3}
         fill={strokeColor}
         stroke="#010102"
         strokeWidth={1.5}
