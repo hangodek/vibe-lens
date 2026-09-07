@@ -1,5 +1,75 @@
-import type { ParsedCodeFile, NodeType, StateVariable, ComponentProp, ApiCall, MiniPreviewType } from '../types/ast';
+import type { ParsedCodeFile, NodeType, StateVariable, ComponentProp, ApiCall, MiniPreviewType, PipelineRole, FlowExplanation } from '../types/ast';
 import { detectStack } from './stackDetector';
+
+function generateFlowExplanation(
+  role: PipelineRole,
+  fileName: string,
+  apiCalls: ApiCall[],
+  guards: string[],
+  scriptBindings: string[],
+  components: string[]
+): FlowExplanation {
+  if (role === 'view') {
+    return {
+      inbound: 'Visitor navigates to route in browser or clicks a link.',
+      processing: `Renders HTML view template (${fileName}) and interpolates dynamic context data.`,
+      outbound: scriptBindings.length > 0
+        ? `Binds client interactivity via script: ${scriptBindings.join(', ')}.`
+        : 'Dispatches form submissions to server route controllers.',
+    };
+  }
+  if (role === 'script') {
+    return {
+      inbound: 'User triggers client event (click, form input, button press).',
+      processing: `Executes client-side DOM logic, captures CSRF token, and manages UI states (${components.slice(0, 3).join(', ') || fileName}).`,
+      outbound: apiCalls.length > 0
+        ? `Dispatches async fetch to backend API: ${apiCalls.map((a) => `${a.method} ${a.endpoint}`).join(', ')}.`
+        : 'Updates DOM directly with toasts, modals, or animations.',
+    };
+  }
+  if (role === 'guard') {
+    return {
+      inbound: 'Intercepts incoming HTTP request before it reaches the controller handler.',
+      processing: `Evaluates security constraints: ${guards.join(', ') || 'auth verification, session cookies, CSRF validation, or rate limits'}.`,
+      outbound: 'Permits request to proceed if valid; otherwise blocks execution with redirect or HTTP error.',
+    };
+  }
+  if (role === 'controller') {
+    return {
+      inbound: apiCalls.length > 0
+        ? `Receives incoming HTTP route: ${apiCalls.map((a) => `${a.method} ${a.endpoint}`).join(', ')}.`
+        : 'Receives routed HTTP request from router entrypoint.',
+      processing: 'Parses request parameters, extracts form data, and orchestrates domain business services.',
+      outbound: 'Returns JSON response or calls template engine to render the outbound view.',
+    };
+  }
+  if (role === 'service') {
+    return {
+      inbound: 'Invoked by controller handlers with validated domain input data.',
+      processing: 'Applies core business rules, entity validations, hashing, and calculation pipelines.',
+      outbound: 'Calls database repository methods to persist, update, or retrieve records.',
+    };
+  }
+  if (role === 'storage') {
+    return {
+      inbound: 'Invoked by service layer with query parameters or entity records.',
+      processing: 'Executes SQL database queries, manages transaction boundaries, and maps rows to structs.',
+      outbound: 'Returns typed entity records or database errors to the service layer.',
+    };
+  }
+  if (role === 'gateway') {
+    return {
+      inbound: 'Application process bootstrap (server startup & HTTP listener).',
+      processing: 'Connects to database, loads environment variables, and registers module routers.',
+      outbound: 'Dispatches incoming network traffic across registered module route controllers.',
+    };
+  }
+  return {
+    inbound: 'Imported by multiple files across the codebase.',
+    processing: 'Provides reusable utility functions, helpers, or shared type contracts.',
+    outbound: 'Supplies calculation or format results to consuming callers.',
+  };
+}
 
 export function parseSourceCode(path: string, code: string): ParsedCodeFile {
   const fileName = path.split('/').pop() || 'Untitled.tsx';
@@ -10,21 +80,32 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
 
   // 1. Universal Architectural Role Detection
   let type: NodeType = isBackend ? 'api' : 'component';
+  let pipelineRole: PipelineRole = 'utility';
+
   if (lowerPath.includes('cmd/') || lowerPath.includes('/server/') || code.includes('func main()')) {
-    type = 'layout'; // Server Entrypoint / Root Runner
-  } else if (lowerPath.includes('template') || lowerPath.includes('pages/') || lowerPath.endsWith('.html') || lowerPath.endsWith('.vue') || lowerPath.endsWith('.svelte')) {
-    type = 'page'; // Screen / View
+    type = 'layout';
+    pipelineRole = 'gateway';
+  } else if (lowerPath.includes('middleware') || (lowerPath.endsWith('.go') && code.includes('func(') && code.includes('http.Handler'))) {
+    type = 'context';
+    pipelineRole = 'guard';
   } else if (lowerPath.includes('route') || lowerPath.includes('handler') || lowerPath.includes('controller') || lowerPath.includes('/api/')) {
-    type = 'api'; // HTTP Controller / Router
+    type = 'api';
+    pipelineRole = 'controller';
   } else if (lowerPath.includes('service') || lowerPath.includes('usecase') || lowerPath.includes('logic')) {
-    type = 'hook'; // Business Logic Service
+    type = 'hook';
+    pipelineRole = 'service';
   } else if (lowerPath.includes('repo') || lowerPath.includes('database') || lowerPath.includes('store') || lowerPath.includes('model')) {
-    type = 'store'; // Data Storage / Repository
-  } else if (lowerPath.includes('middleware')) {
-    type = 'context'; // Middleware Security Guard
+    type = 'store';
+    pipelineRole = 'storage';
+  } else if (lowerPath.endsWith('.js') && (lowerPath.includes('static') || lowerPath.includes('javascript') || lowerPath.includes('scripts'))) {
+    type = 'component';
+    pipelineRole = 'script';
+  } else if (lowerPath.includes('template') || lowerPath.includes('pages/') || lowerPath.endsWith('.html') || lowerPath.endsWith('.vue') || lowerPath.endsWith('.svelte')) {
+    type = 'page';
+    pipelineRole = 'view';
   }
 
-  // 2. Universal Import & Dependency Extractor (Go, Python, JS/TS, Rust)
+  // 2. Universal Import & Dependency Extractor
   const imports: string[] = [];
   const jsImportRegex = /(?:import\s+(?:{[^}]+}|\w+|\*\s+as\s+\w+)?\s+from\s+|from\s+)(?:['"]([^'"]+)['"]|([a-zA-Z0-9_.]+)\s+import)/g;
   let match;
@@ -33,7 +114,6 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     const clean = raw.split('/').pop() || raw;
     if (!imports.includes(clean)) imports.push(clean);
   }
-  // Go imports: e.g. "car.go/internal/product" -> "product" and "internal/product"
   const goImportRegex = /"([^"]+)"/g;
   if (lowerPath.endsWith('.go')) {
     while ((match = goImportRegex.exec(code)) !== null) {
@@ -52,7 +132,6 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
 
   // 3. Universal Function, Struct & Component Extractor
   const components: string[] = [];
-  // Functions: JS/TS, Python def, Go func, struct types
   const symbolRegex = /(?:func\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_]+)|type\s+([A-Za-z0-9_]+)\s+struct|def\s+([A-Za-z0-9_]+)|(?:export\s+)?(?:function|const)\s+([A-Za-z0-9_]+))/g;
   while ((match = symbolRegex.exec(code)) !== null) {
     const name = match[1] || match[2] || match[3] || match[4];
@@ -61,9 +140,8 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     }
   }
 
-  // 4. Universal Route & HTTP Endpoint Extractor (Go 1.22 ServeMux, Gin, FastAPI, Express)
+  // 4. Universal Route & HTTP Endpoint Extractor
   const apiCalls: ApiCall[] = [];
-  // Go 1.22 ServeMux: mux.HandleFunc("GET /products", h.ShowList)
   const goMuxRegex = /(?:HandleFunc|Handle)\(\s*["'](?:(GET|POST|PUT|DELETE|PATCH)\s+)?(\/[^"']*)["']/g;
   while ((match = goMuxRegex.exec(code)) !== null) {
     apiCalls.push({
@@ -73,7 +151,6 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
       purpose: `Routes ${match[1] || 'GET'} ${match[2]}`,
     });
   }
-  // FastAPI / Flask / Express / Gin
   const serverRouteRegex = /(?:@(?:app|router)\.|r\.|app\.)(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]/gi;
   while ((match = serverRouteRegex.exec(code)) !== null) {
     apiCalls.push({
@@ -83,38 +160,44 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
       purpose: `Exposes ${match[1].toUpperCase()} ${match[2]}`,
     });
   }
-  // Client fetch
   const fetchRegex = /fetch\(\s*['"`]([^'"`]+)['"`](?:,\s*\{[^}]*method:\s*['"](\w+)['"])?/g;
   while ((match = fetchRegex.exec(code)) !== null) {
     apiCalls.push({
       endpoint: match[1],
       method: (match[2] as any) || 'GET',
-      triggeredBy: 'HTTP Client Invocation',
+      triggeredBy: 'Client Fetch Invocation',
       purpose: `Dispatches network request to ${match[1]}`,
     });
   }
 
-  // 5. Universal Template Partials & Rendered Children
-  const renderedChildren: string[] = [];
-  // Go template: {{template "product_card" .}}
+  // 5. Middleware Guards & Security Wrappers
+  const guards: string[] = [];
+  const guardRegex = /middleware\.([A-Za-z0-9_]+)/g;
+  while ((match = guardRegex.exec(code)) !== null) {
+    const gName = `middleware.${match[1]}`;
+    if (!guards.includes(gName)) guards.push(gName);
+  }
+
+  // 6. Client Script Bindings & Template Partials
+  const scriptBindings: string[] = [];
+  const scriptRegex = /<script\s+[^>]*src=["'][^"']*\/([a-zA-Z0-9_.-]+)/g;
+  while ((match = scriptRegex.exec(code)) !== null) {
+    if (!scriptBindings.includes(match[1])) scriptBindings.push(match[1]);
+  }
+
+  const renderedChildren: string[] = [...scriptBindings];
   const goTmplRegex = /\{\{template\s+["']([a-zA-Z0-9_]+)["']/g;
   while ((match = goTmplRegex.exec(code)) !== null) {
     if (!renderedChildren.includes(match[1])) renderedChildren.push(match[1]);
   }
-  // JSX / XML tags
   const tagRegex = /<([A-Z]\w+)(?:\s|\/|>)/g;
   while ((match = tagRegex.exec(code)) !== null) {
     if (!['React', 'Fragment'].includes(match[1]) && !renderedChildren.includes(match[1])) {
       renderedChildren.push(match[1]);
     }
   }
-  // Script / Client JS linked in HTML
-  const scriptRegex = /<script\s+[^>]*src=["'][^"']*\/([a-zA-Z0-9_.]+)/g;
-  while ((match = scriptRegex.exec(code)) !== null) {
-    if (!renderedChildren.includes(match[1])) renderedChildren.push(match[1]);
-  }
 
-  // 6. Universal State Extractor (React useState, Vue ref, Svelte $state, Go fields)
+  // 7. States
   const states: StateVariable[] = [];
   const stateRegex = /const\s+\[\s*(\w+)\s*,\s*(\w+)\s*\]\s*=\s*useState(?:<[^>]+>)?\(([^)]*)\)/g;
   while ((match = stateRegex.exec(code)) !== null) {
@@ -127,21 +210,7 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     });
   }
 
-  // 7. Event Handlers
-  const events: { name: string; handler: string; targetAction: string }[] = [];
-  const eventRegex = /(?:on|@|v-on:)([A-Za-z]+)=\{(\w+)\}/g;
-  while ((match = eventRegex.exec(code)) !== null) {
-    events.push({
-      name: match[1].toLowerCase(),
-      handler: match[2],
-      targetAction: `Triggers ${match[2]} on event`,
-    });
-  }
-
-  let previewType: MiniPreviewType = isBackend ? 'api-schema' : 'generic';
-  if (stack === 'vue') previewType = 'vue-template';
-  if (stack === 'svelte') previewType = 'svelte-runes';
-  if (stack === 'python') previewType = 'python-service';
+  const flowExplanation = generateFlowExplanation(pipelineRole, fileName, apiCalls, guards, scriptBindings, components);
 
   const id = 'file-' + Math.random().toString(36).substring(2, 9);
 
@@ -152,8 +221,8 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     type,
     code,
     lineCount,
-    description: `A ${stack} ${type} file with ${lineCount} lines containing ${components.slice(0, 3).join(', ') || fileName}.`,
-    whyAiMadeThis: `Modularized ${stack} unit generated by AI to isolate state and responsibilities.`,
+    description: flowExplanation.processing,
+    whyAiMadeThis: flowExplanation.outbound,
     imports,
     exports: components.slice(0, 5),
     components,
@@ -162,8 +231,11 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     hooks: [],
     apiCalls,
     renderedChildren,
-    events,
+    events: [],
     stack,
-    previewType,
+    pipelineRole,
+    guards,
+    scriptBindings,
+    flowExplanation,
   };
 }

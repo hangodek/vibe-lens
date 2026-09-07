@@ -18,6 +18,22 @@ export type StackType =
   | 'html'
   | 'generic';
 
+export type PipelineRole = 
+  | 'view' 
+  | 'script' 
+  | 'guard' 
+  | 'controller' 
+  | 'service' 
+  | 'storage' 
+  | 'gateway' 
+  | 'utility';
+
+export interface FlowExplanation {
+  inbound: string;
+  processing: string;
+  outbound: string;
+}
+
 export type MiniPreviewType =
   | 'prompt-bar'
   | 'canvas'
@@ -98,6 +114,10 @@ export interface ParsedCodeFile {
   events: { name: string; handler: string; targetAction: string }[];
   previewType?: MiniPreviewType;
   stack?: StackType;
+  pipelineRole?: PipelineRole;
+  guards?: string[];
+  scriptBindings?: string[];
+  flowExplanation?: FlowExplanation;
   apiContract?: ApiContract;
   blastRadius?: BlastRadius;
   screenLocation?: ScreenLocation;
