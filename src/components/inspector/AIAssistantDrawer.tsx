@@ -21,14 +21,13 @@ export function AIAssistantDrawer({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: `I am your Vibe Architecture Assistant. Ask me anything about **${file.name}**, its hidden re-renders, or what will happen if you ask Cursor to modify it.`,
+      content: `I am your Vibe Architecture Assistant. Ask me anything about **${file.name}**, its hidden re-renders, or what will happen if you ask Cursor or Claude to modify it.`,
     },
   ]);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-fill and submit if initial question is passed
   useEffect(() => {
     if (initialQuestion) {
       handleAskQuestion(initialQuestion);
@@ -48,9 +47,41 @@ export function AIAssistantDrawer({
     setInput('');
     setIsThinking(true);
 
-    // Check for user API key
     const openAiKey = localStorage.getItem('vibe_key_openai');
+    const groqKey = localStorage.getItem('vibe_key_groq');
+    const anthropicKey = localStorage.getItem('vibe_key_anthropic');
 
+    // Multi-Provider Support: Groq
+    if (groqKey) {
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${groqKey}`,
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              {
+                role: 'system',
+                content: `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path}. Code: \`\`\`${file.code}\`\`\``,
+              },
+              { role: 'user', content: queryText },
+            ],
+          }),
+        });
+        const data = await response.json();
+        const reply = data.choices?.[0]?.message?.content || 'Failed to parse Groq response.';
+        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+        setIsThinking(false);
+        return;
+      } catch (e) {
+        console.warn('Groq API error, falling back to heuristics engine', e);
+      }
+    }
+
+    // Multi-Provider Support: OpenAI
     if (openAiKey) {
       try {
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -71,12 +102,40 @@ export function AIAssistantDrawer({
           }),
         });
         const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || 'Failed to parse response.';
+        const reply = data.choices?.[0]?.message?.content || 'Failed to parse OpenAI response.';
         setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
         setIsThinking(false);
         return;
       } catch (e) {
-        console.warn('API error, falling back to heuristics engine', e);
+        console.warn('OpenAI API error, falling back to heuristics engine', e);
+      }
+    }
+
+    // Multi-Provider Support: Anthropic
+    if (anthropicKey) {
+      try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': anthropicKey,
+            'anthropic-version': '2023-06-01',
+            'dangerously-allow-browser': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 1024,
+            messages: [{ role: 'user', content: queryText }],
+            system: `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path}. Code: \`\`\`${file.code}\`\`\``,
+          }),
+        });
+        const data = await response.json();
+        const reply = data.content?.[0]?.text || 'Failed to parse Anthropic response.';
+        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+        setIsThinking(false);
+        return;
+      } catch (e) {
+        console.warn('Anthropic API error, falling back to heuristics engine', e);
       }
     }
 
@@ -149,7 +208,7 @@ export function AIAssistantDrawer({
           <button
             onClick={() => handleAskQuestion(input)}
             disabled={!input.trim() || isThinking}
-            className="p-1.5 text-white bg-[#5e6ad2] hover:bg-[#828fff] disabled:opacity-40 rounded-lg transition-colors"
+            className="p-1.5 text-white bg-[#5e6ad2] hover:bg-[#828fff] disabled:opacity-40 rounded-lg transition-colors cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
           </button>

@@ -8,18 +8,45 @@ interface ConnectionEdgeProps {
 }
 
 export function ConnectionEdge({ edge, fromNode, toNode }: ConnectionEdgeProps) {
-  // Compute connector anchor points
-  const startX = fromNode.x + fromNode.width;
-  const startY = fromNode.y + fromNode.height / 2;
-  const endX = toNode.x;
-  const endY = toNode.y + toNode.height / 2;
+  // Determine relative layout direction to prevent reverse knotting / looping
+  const rawStartX = fromNode.x + fromNode.width;
+  const rawEndX = toNode.x;
+  const isLeftToRight = rawEndX >= rawStartX - 20;
 
-  // Compute smooth bezier curve controls
-  const dx = Math.abs(endX - startX) * 0.55;
-  const controlX1 = startX + Math.max(dx, 40);
-  const controlY1 = startY;
-  const controlX2 = endX - Math.max(dx, 40);
-  const controlY2 = endY;
+  let startX: number;
+  let startY: number;
+  let endX: number;
+  let endY: number;
+  let controlX1: number;
+  let controlY1: number;
+  let controlX2: number;
+  let controlY2: number;
+
+  if (isLeftToRight) {
+    startX = fromNode.x + fromNode.width;
+    startY = fromNode.y + fromNode.height / 2;
+    endX = toNode.x;
+    endY = toNode.y + toNode.height / 2;
+
+    const dx = Math.abs(endX - startX) * 0.55;
+    controlX1 = startX + Math.max(dx, 40);
+    controlY1 = startY;
+    controlX2 = endX - Math.max(dx, 40);
+    controlY2 = endY;
+  } else {
+    // Backward routing / cycle: connect left-to-right with an outward smooth arc
+    startX = fromNode.x;
+    startY = fromNode.y + fromNode.height * 0.7;
+    endX = toNode.x + toNode.width;
+    endY = toNode.y + toNode.height * 0.7;
+
+    const dx = Math.abs(startX - endX) * 0.35;
+    const dy = Math.max(Math.abs(endY - startY), 50);
+    controlX1 = startX - Math.max(dx, 50);
+    controlY1 = startY + dy * 0.3;
+    controlX2 = endX + Math.max(dx, 50);
+    controlY2 = endY + dy * 0.3;
+  }
 
   const pathD = `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
   const midX = (startX + endX) / 2;

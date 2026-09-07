@@ -16,9 +16,17 @@ export function calculateLayout(
   const VERTICAL_GAP = 80;
 
   if (mode === 'trace' && activeTrace) {
-    // Layout nodes in linear or branching order according to trace steps
-    const stepNodeIds = activeTrace.steps.map(s => s.activeNodeId);
-    const uniqueIds = Array.from(new Set(stepNodeIds));
+    // Collect both active and target node IDs to ensure all interacting nodes are on the main workflow stage
+    const stepNodeIds: string[] = [];
+    activeTrace.steps.forEach((s) => {
+      if (s.activeNodeId && !stepNodeIds.includes(s.activeNodeId)) {
+        stepNodeIds.push(s.activeNodeId);
+      }
+      if (s.targetNodeId && !stepNodeIds.includes(s.targetNodeId)) {
+        stepNodeIds.push(s.targetNodeId);
+      }
+    });
+    const uniqueIds = stepNodeIds;
 
     // Place trace nodes horizontally across stages
     uniqueIds.forEach((fileId, index) => {

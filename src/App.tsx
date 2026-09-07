@@ -25,6 +25,7 @@ export function App() {
     switchProject,
     addCustomFile,
     setActiveTraceIndex: syncTraceIndex,
+    setActiveTraceId,
   } = useCodebase();
 
   const [isIngestOpen, setIsIngestOpen] = useState(false);
@@ -39,6 +40,11 @@ export function App() {
   React.useEffect(() => {
     syncTraceIndex(trace.activeStepIndex);
   }, [trace.activeStepIndex, syncTraceIndex]);
+
+  // Synchronize selected trace ID with layout engine
+  React.useEffect(() => {
+    setActiveTraceId(trace.selectedTraceId);
+  }, [trace.selectedTraceId, setActiveTraceId]);
 
   // When trace step changes, automatically focus the active file in inspector
   React.useEffect(() => {
@@ -99,6 +105,7 @@ export function App() {
             edges={edges}
             selectedFileId={selectedFileId}
             activeTraceStepNodeId={layerMode === 'trace' ? trace.currentStep?.activeNodeId : undefined}
+            scopeKey={`${activeProject.id}-${layerMode}`}
             onSelectNode={(fileId) => {
               setSelectedFileId(fileId);
               setIsInspectorOpen(true);

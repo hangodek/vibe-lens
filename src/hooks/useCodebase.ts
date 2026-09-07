@@ -11,6 +11,7 @@ export function useCodebase() {
   );
   const [layerMode, setLayerMode] = useState<LayerMode>('screen');
   const [activeTraceIndex, setActiveTraceIndex] = useState(0);
+  const [activeTraceId, setActiveTraceId] = useState<string>('');
 
   // Listen to keyboard shortcuts for layers: '1' -> screen, '2' -> data, '3' -> trace
   useEffect(() => {
@@ -43,7 +44,7 @@ export function useCodebase() {
     setSelectedFileId(newFile.id);
   };
 
-  const currentTrace = activeProject.traces[0];
+  const currentTrace = activeProject.traces.find((t) => t.id === activeTraceId) || activeProject.traces[0];
 
   const { nodes, edges } = useMemo(() => {
     return calculateLayout(allFiles, layerMode, currentTrace, activeTraceIndex);
@@ -62,5 +63,6 @@ export function useCodebase() {
     switchProject,
     addCustomFile,
     setActiveTraceIndex,
+    setActiveTraceId,
   };
 }

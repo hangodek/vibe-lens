@@ -36,6 +36,7 @@ export function ScreenLocatorModal({
 
   const isNonVisual = loc.widthPercent === 0 || file.type === 'hook' || file.type === 'api' || file.type === 'store';
   const type = file.previewType;
+  const isKnownPreset = ['ai-studio', 'saas-billing', 'ecommerce-cart'].includes(project.id);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 select-none">
@@ -168,6 +169,27 @@ export function ScreenLocatorModal({
                     <div className={`transition-all ${type === 'cart-drawer' ? 'ring-2 ring-[#5e6ad2] shadow-[0_0_24px_rgba(94,106,210,0.6)] rounded-xl' : 'opacity-80'}`}>
                       <RealCartDrawer />
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Dynamic Fallback for Custom Ingested Files or Unfamiliar Stacks */}
+              {!isKnownPreset && !isNonVisual && (
+                <div className="space-y-4">
+                  <header className="h-12 border-b border-[#23252a] px-3 flex items-center justify-between bg-[#08090a] rounded-lg">
+                    <span className="text-xs font-bold text-white">{project.name}</span>
+                    <span className="text-[10px] font-mono text-[#5e6ad2] bg-[#5e6ad2]/15 px-2 py-0.5 rounded">
+                      {project.framework || 'Custom Codebase'}
+                    </span>
+                  </header>
+                  <div className="p-4 bg-[#08090a] border border-[#23252a] rounded-xl ring-2 ring-[#5e6ad2] shadow-[0_0_24px_rgba(94,106,210,0.5)]">
+                    <div className="flex items-center justify-between pb-3 border-b border-[#1c1d22]">
+                      <span className="text-xs font-semibold text-white">{file.name}</span>
+                      <span className="text-[10px] font-mono text-[#8a8f98]">{file.path}</span>
+                    </div>
+                    <pre className="py-3 text-[11px] font-mono text-[#d0d6e0] leading-relaxed overflow-x-auto">
+                      {file.code.slice(0, 360)}...
+                    </pre>
                   </div>
                 </div>
               )}
