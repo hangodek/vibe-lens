@@ -21,7 +21,7 @@ export function AIAssistantDrawer({
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
-      content: `I am your Vibe Architecture Assistant. Ask me anything about **${file.name}**, its hidden re-renders, or what will happen if you ask Cursor or Claude to modify it.`,
+      content: `I am your Vibe Architecture Assistant. Ask me anything about **${file.name}**, its inputs/outputs, or how to prompt local AI CLIs to modify it safely.`,
     },
   ]);
   const [input, setInput] = useState('');
@@ -42,124 +42,74 @@ export function AIAssistantDrawer({
   async function handleAskQuestion(queryText: string) {
     if (!queryText.trim() || isThinking) return;
 
-    const userMsg: Message = { role: 'user', content: queryText };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { role: 'user', content: queryText }]);
     setInput('');
     setIsThinking(true);
 
     const openAiKey = localStorage.getItem('vibe_key_openai');
     const groqKey = localStorage.getItem('vibe_key_groq');
-    const anthropicKey = localStorage.getItem('vibe_key_anthropic');
+    const localUrl = localStorage.getItem('vibe_local_url') || 'http://localhost:11434/v1';
+    const localModel = localStorage.getItem('vibe_local_model') || 'llama3.2';
+    const activeProvider = localStorage.getItem('vibe_ai_provider') || 'local';
 
-    // Multi-Provider Support: Groq
-    if (groqKey) {
+    const systemPrompt = `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path} (${file.pipelineRole || 'module'}). Code: \`\`\`${file.code.slice(0, 3000)}\`\`\``;
+
+    // 1. Localhost AI (Ollama / LM Studio) or Cloud Providers (Groq / OpenAI)
+    const targetUrl = activeProvider === 'local'
+      ? `${localUrl.replace(/\/+$/, '')}/chat/completions`
+      : groqKey
+      ? 'https://api.groq.com/openai/v1/chat/completions'
+      : openAiKey
+      ? 'https://api.openai.com/v1/chat/completions'
+      : null;
+
+    if (targetUrl) {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (groqKey && activeProvider === 'groq') headers.Authorization = `Bearer ${groqKey}`;
+      if (openAiKey && activeProvider === 'openai') headers.Authorization = `Bearer ${openAiKey}`;
+
       try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const res = await fetch(targetUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${groqKey}`,
-          },
+          headers,
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              {
-                role: 'system',
-                content: `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path}. Code: \`\`\`${file.code}\`\`\``,
-              },
-              { role: 'user', content: queryText },
-            ],
+            model: activeProvider === 'local' ? localModel : groqKey ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini',
+            messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: queryText }],
           }),
         });
-        const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || 'Failed to parse Groq response.';
-        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-        setIsThinking(false);
-        return;
+        const data = await res.json();
+        const reply = data.choices?.[0]?.message?.content;
+        if (reply) {
+          setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+          setIsThinking(false);
+          return;
+        }
       } catch (e) {
-        console.warn('Groq API error, falling back to heuristics engine', e);
+        console.warn('AI endpoint error, falling back to deterministic engine', e);
       }
     }
 
-    // Multi-Provider Support: OpenAI
-    if (openAiKey) {
-      try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${openAiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              {
-                role: 'system',
-                content: `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path}. Code: \`\`\`${file.code}\`\`\``,
-              },
-              { role: 'user', content: queryText },
-            ],
-          }),
-        });
-        const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || 'Failed to parse OpenAI response.';
-        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-        setIsThinking(false);
-        return;
-      } catch (e) {
-        console.warn('OpenAI API error, falling back to heuristics engine', e);
-      }
-    }
-
-    // Multi-Provider Support: Anthropic
-    if (anthropicKey) {
-      try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': anthropicKey,
-            'anthropic-version': '2023-06-01',
-            'dangerously-allow-browser': 'true',
-          },
-          body: JSON.stringify({
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 1024,
-            messages: [{ role: 'user', content: queryText }],
-            system: `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path}. Code: \`\`\`${file.code}\`\`\``,
-          }),
-        });
-        const data = await response.json();
-        const reply = data.content?.[0]?.text || 'Failed to parse Anthropic response.';
-        setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-        setIsThinking(false);
-        return;
-      } catch (e) {
-        console.warn('Anthropic API error, falling back to heuristics engine', e);
-      }
-    }
-
-    // Heuristic Smart Explainer Fallback (No Key Needed)
+    // 2. Deterministic Semantic Heuristic Engine (100% Offline & Free)
     setTimeout(() => {
-      let smartAnswer = '';
-      const lower = queryText.toLowerCase();
+      let reply = '';
+      const low = queryText.toLowerCase();
 
-      if (lower.includes('interact') || lower.includes('other')) {
-        smartAnswer = `**${file.name}** connects to downstream components like **${file.renderedChildren.join(', ') || 'its container'}**. When events fire, state flows via props. Any parent holding this component will trigger a reconciliation pass whenever props mutate.`;
-      } else if (lower.includes('break') || lower.includes('state')) {
-        smartAnswer = `If you rename or remove \`${file.states[0]?.name || 'state'}\`, any handler expecting \`${file.states[0]?.setter || 'setter'}\` will throw undefined. Always tell Cursor: *"Keep existing state variable signatures intact while updating UI"*.`;
+      if (low.includes('interact') || low.includes('workflow') || low.includes('pipeline')) {
+        const exp = file.flowExplanation;
+        reply = `**Pipeline Role: ${file.pipelineRole?.toUpperCase() || 'MODULE'}**\n\n• **Inbound:** ${exp?.inbound || 'Receives data from parent callers.'}\n• **Processing:** ${exp?.processing || file.description}\n• **Outbound:** ${exp?.outbound || 'Passes results to downstream callers.'}`;
+      } else if (low.includes('break') || low.includes('invariant') || low.includes('safe')) {
+        reply = `**Critical Invariants for ${file.name}:**\n${file.blastRadius?.safeInvariants.map((i) => `• ${i}`).join('\n') || '• Keep function exports and route parameter names intact.'}\n\nTo edit in Claude Code or Antigravity, copy the CLI directive from the Safety tab!`;
       } else {
-        smartAnswer = `**${file.name}** is a **${file.type}** with ${file.lineCount} lines. It imports ${file.imports.length} modules and defines ${file.states.length} reactive state variables. To customize it safely, ask your AI to modify the JSX without altering the exported function names.`;
+        reply = `**${file.name}** operates as **${file.pipelineRole || 'a component'}** in your application. It contains ${file.lineCount} lines and exposes ${file.exports.length} public declarations. Ask me about its inputs, outputs, or how it communicates with other files!`;
       }
 
-      setMessages((prev) => [...prev, { role: 'assistant', content: smartAnswer }]);
+      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
       setIsThinking(false);
-    }, 600);
+    }, 400);
   }
 
   return (
     <div className="flex flex-col h-full bg-[#08090a]">
-      {/* Messages Feed */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((m, idx) => (
           <div
@@ -179,22 +129,19 @@ export function AIAssistantDrawer({
                 </div>
               )}
             </div>
-            <div className="flex-1 text-[#f7f8f8] whitespace-pre-wrap">
-              {m.content}
-            </div>
+            <div className="flex-1 text-[#f7f8f8] whitespace-pre-wrap font-sans">{m.content}</div>
           </div>
         ))}
 
         {isThinking && (
           <div className="flex items-center gap-2 text-xs text-[#8a8f98] p-3 bg-[#121316] rounded-xl border border-[#23252a]">
             <Loader2 className="w-3.5 h-3.5 animate-spin text-[#5e6ad2]" />
-            Analyzing component architecture...
+            Analyzing code facts and invariants...
           </div>
         )}
         <div ref={scrollRef} />
       </div>
 
-      {/* Query Input Bar */}
       <div className="p-3 border-t border-[#23252a] bg-[#010102]">
         <div className="flex items-center gap-2 bg-[#121316] border border-[#23252a] rounded-xl px-3 py-1.5 focus-within:border-[#5e6ad2]">
           <input
@@ -202,7 +149,7 @@ export function AIAssistantDrawer({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion(input)}
-            placeholder="Ask about this file..."
+            placeholder="Ask about pipeline flow, inputs, or invariants..."
             className="flex-1 bg-transparent text-xs text-[#f7f8f8] outline-none placeholder-[#62666d]"
           />
           <button
