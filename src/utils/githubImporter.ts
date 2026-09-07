@@ -1,6 +1,7 @@
 import type { ParsedCodeFile, VibeProject } from '../types/ast';
 import { parseSourceCode } from './astParser';
 import { detectStack } from './stackDetector';
+import { synthesizeUserJourneys } from './storySynthesizer';
 
 const IGNORED_PATHS = [
   'node_modules/',
@@ -124,26 +125,6 @@ export async function importFromGitHub(
     tagline: `Imported from github.com/${owner}/${repo}`,
     description: `Public repository with ${parsedFiles.length} analyzed components and routes.`,
     files: parsedFiles,
-    traces: [
-      {
-        id: 'trace-gh-entry',
-        title: 'Core Architecture Sequence',
-        triggerLabel: 'GitHub Repo Tree',
-        description: 'Auto-detected sequence across primary files.',
-        steps: parsedFiles.slice(0, 4).map((f, idx) => ({
-          id: `step-${idx + 1}`,
-          stepNumber: idx + 1,
-          title: `Inspects ${f.name}`,
-          description: f.description,
-          activeNodeId: f.id,
-          storybook: {
-            chapterNumber: idx + 1,
-            chapterTitle: `Stage ${idx + 1}`,
-            story: `Application flows through ${f.name}.`,
-            humanCausality: f.whyAiMadeThis || 'Coordinates state and dependencies.',
-          },
-        })),
-      },
-    ],
+    traces: synthesizeUserJourneys(parsedFiles),
   };
 }

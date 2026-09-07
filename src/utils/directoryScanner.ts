@@ -1,6 +1,7 @@
 import type { ParsedCodeFile, VibeProject } from '../types/ast';
 import { parseSourceCode } from './astParser';
 import { detectStack } from './stackDetector';
+import { synthesizeUserJourneys } from './storySynthesizer';
 
 const IGNORED_DIRS = new Set([
   'node_modules',
@@ -130,26 +131,6 @@ function packageProject(name: string, files: ParsedCodeFile[]): VibeProject {
     tagline: 'Scanned directly from local disk with zero cloud upload',
     description: `Local project with ${files.length} active files, detected as ${framework}.`,
     files: files,
-    traces: [
-      {
-        id: 'trace-local-main',
-        title: 'Primary Application Flow',
-        triggerLabel: 'Entry execution path',
-        description: 'Auto-generated sequence mapping the top dependencies of your project.',
-        steps: files.slice(0, 4).map((f, idx) => ({
-          id: `step-${idx + 1}`,
-          stepNumber: idx + 1,
-          title: `Invokes ${f.name}`,
-          description: f.description,
-          activeNodeId: f.id,
-          storybook: {
-            chapterNumber: idx + 1,
-            chapterTitle: `Stage ${idx + 1}`,
-            story: `Application executes ${f.name}.`,
-            humanCausality: f.whyAiMadeThis || 'Coordinates state and dependencies.',
-          },
-        })),
-      },
-    ],
+    traces: synthesizeUserJourneys(files),
   };
 }

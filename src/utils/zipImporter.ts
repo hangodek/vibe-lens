@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import type { ParsedCodeFile, VibeProject } from '../types/ast';
 import { parseSourceCode } from './astParser';
 import { detectStack } from './stackDetector';
+import { synthesizeUserJourneys } from './storySynthesizer';
 
 const IGNORED = ['node_modules/', '.git/', '.next/', 'dist/', 'build/', '__pycache__/', '.venv/', 'vendor/'];
 const ALLOWED_EXT = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte', '.py', '.go', '.html'];
@@ -47,26 +48,6 @@ export async function importFromZip(file: File): Promise<VibeProject> {
     tagline: `Extracted ${parsedFiles.length} files client-side`,
     description: `Project extracted from ${file.name}.`,
     files: parsedFiles,
-    traces: [
-      {
-        id: 'trace-zip-entry',
-        title: 'Extracted Project Flow',
-        triggerLabel: 'Archive Root',
-        description: 'Auto-generated sequence from zip files.',
-        steps: parsedFiles.slice(0, 4).map((f, idx) => ({
-          id: `step-${idx + 1}`,
-          stepNumber: idx + 1,
-          title: `Executes ${f.name}`,
-          description: f.description,
-          activeNodeId: f.id,
-          storybook: {
-            chapterNumber: idx + 1,
-            chapterTitle: `Stage ${idx + 1}`,
-            story: `App triggers ${f.name}.`,
-            humanCausality: f.whyAiMadeThis || 'Dependencies loaded.',
-          },
-        })),
-      },
-    ],
+    traces: synthesizeUserJourneys(parsedFiles),
   };
 }
