@@ -17,16 +17,11 @@ export function calculateLayout(
 
   if (mode === 'trace' && activeTrace) {
     // Collect both active and target node IDs to ensure all interacting nodes are on the main workflow stage
-    const stepNodeIds: string[] = [];
-    activeTrace.steps.forEach((s) => {
-      if (s.activeNodeId && !stepNodeIds.includes(s.activeNodeId)) {
-        stepNodeIds.push(s.activeNodeId);
-      }
-      if (s.targetNodeId && !stepNodeIds.includes(s.targetNodeId)) {
-        stepNodeIds.push(s.targetNodeId);
-      }
-    });
-    const uniqueIds = stepNodeIds;
+    const uniqueIds = Array.from(
+      new Set(
+        activeTrace.steps.flatMap((s) => [s.activeNodeId, s.targetNodeId]).filter(Boolean) as string[]
+      )
+    );
 
     // Place trace nodes horizontally across stages
     uniqueIds.forEach((fileId, index) => {
@@ -98,16 +93,11 @@ export function calculateLayout(
 
   if (mode === 'data') {
     // Categorize: Stores & Contexts -> Hooks & Logic -> UI Consumers -> API Targets
-    const storesAndContexts = files.filter(f => f.type === 'store' || f.type === 'context');
-    const hooks = files.filter(f => f.type === 'hook');
-    const pagesAndComps = files.filter(f => f.type === 'page' || f.type === 'component' || f.type === 'layout');
-    const apis = files.filter(f => f.type === 'api');
-
     const columns = [
-      { title: 'Global State / Stores', items: storesAndContexts, colX: 60 },
-      { title: 'Hooks & Data Fetching', items: hooks, colX: 420 },
-      { title: 'UI Subscriber Views', items: pagesAndComps, colX: 780 },
-      { title: 'Backend / APIs', items: apis, colX: 1140 },
+      { items: files.filter(f => f.type === 'store' || f.type === 'context'), colX: 60 },
+      { items: files.filter(f => f.type === 'hook'), colX: 420 },
+      { items: files.filter(f => f.type === 'page' || f.type === 'component' || f.type === 'layout'), colX: 780 },
+      { items: files.filter(f => f.type === 'api'), colX: 1140 },
     ];
 
     columns.forEach(({ items, colX }) => {

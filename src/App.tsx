@@ -58,10 +58,14 @@ export function App() {
       {/* Studio Header Bar */}
       <StudioHeader
         currentMode={layerMode}
+        files={allFiles}
         onChangeMode={setLayerMode}
         onOpenIngest={() => setIsIngestOpen(true)}
         onOpenApiKey={() => setIsApiKeyOpen(true)}
-        totalFiles={allFiles.length}
+        onSelectFile={(id) => {
+          setSelectedFileId(id);
+          setIsInspectorOpen(true);
+        }}
       />
 
       {/* Main Studio Body Workspace */}
