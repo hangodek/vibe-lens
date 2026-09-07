@@ -6,24 +6,25 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
   const lines = code.split('\n');
   const lineCount = lines.length;
   const { stack, isBackend } = detectStack(path, code);
+  const lowerPath = path.toLowerCase();
 
-  // 1. Determine Node Type
+  // 1. Universal Architectural Role Detection
   let type: NodeType = isBackend ? 'api' : 'component';
-  if (path.includes('/api/') || path.includes('route.') || code.includes('@app.') || code.includes('gin.Context')) {
-    type = 'api';
-  } else if (path.includes('use') || path.startsWith('hooks/') || fileName.startsWith('use')) {
-    type = 'hook';
-  } else if (path.includes('store') || path.includes('zustand') || path.includes('pinia') || code.includes('defineStore')) {
-    type = 'store';
-  } else if (path.includes('context') || path.includes('Context')) {
-    type = 'context';
-  } else if (fileName.startsWith('layout.') || path.includes('layout.')) {
-    type = 'layout';
-  } else if (fileName.startsWith('page.') || fileName.startsWith('+page') || path.includes('pages/')) {
-    type = 'page';
+  if (lowerPath.includes('cmd/') || lowerPath.includes('/server/') || code.includes('func main()')) {
+    type = 'layout'; // Server Entrypoint / Root Runner
+  } else if (lowerPath.includes('template') || lowerPath.includes('pages/') || lowerPath.endsWith('.html') || lowerPath.endsWith('.vue') || lowerPath.endsWith('.svelte')) {
+    type = 'page'; // Screen / View
+  } else if (lowerPath.includes('route') || lowerPath.includes('handler') || lowerPath.includes('controller') || lowerPath.includes('/api/')) {
+    type = 'api'; // HTTP Controller / Router
+  } else if (lowerPath.includes('service') || lowerPath.includes('usecase') || lowerPath.includes('logic')) {
+    type = 'hook'; // Business Logic Service
+  } else if (lowerPath.includes('repo') || lowerPath.includes('database') || lowerPath.includes('store') || lowerPath.includes('model')) {
+    type = 'store'; // Data Storage / Repository
+  } else if (lowerPath.includes('middleware')) {
+    type = 'context'; // Middleware Security Guard
   }
 
-  // 2. Extract Imports (Universal: JS/TS, Python, Go, Rust)
+  // 2. Universal Import & Dependency Extractor (Go, Python, JS/TS, Rust)
   const imports: string[] = [];
   const jsImportRegex = /(?:import\s+(?:{[^}]+}|\w+|\*\s+as\s+\w+)?\s+from\s+|from\s+)(?:['"]([^'"]+)['"]|([a-zA-Z0-9_.]+)\s+import)/g;
   let match;
@@ -32,115 +33,101 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     const clean = raw.split('/').pop() || raw;
     if (!imports.includes(clean)) imports.push(clean);
   }
-  const goImportRegex = /import\s+(?:\(\s*([^)]+)\s*\)|"([^"]+)")/g;
-  while ((match = goImportRegex.exec(code)) !== null) {
-    const raw = match[2] || match[1];
-    raw.split('\n').forEach((l) => {
-      const pkg = l.replace(/["\s]/g, '').split('/').pop();
-      if (pkg && !imports.includes(pkg)) imports.push(pkg);
-    });
+  // Go imports: e.g. "car.go/internal/product" -> "product" and "internal/product"
+  const goImportRegex = /"([^"]+)"/g;
+  if (lowerPath.endsWith('.go')) {
+    while ((match = goImportRegex.exec(code)) !== null) {
+      const imp = match[1];
+      if (imp.includes('/')) {
+        const segs = imp.split('/');
+        const pkg = segs[segs.length - 1];
+        if (pkg && !imports.includes(pkg)) imports.push(pkg);
+        if (segs.length >= 2) {
+          const subpkg = `${segs[segs.length - 2]}/${pkg}`;
+          if (!imports.includes(subpkg)) imports.push(subpkg);
+        }
+      }
+    }
   }
 
-  // 3. Extract Components / Functions
+  // 3. Universal Function, Struct & Component Extractor
   const components: string[] = [];
-  const fnRegex = /(?:export\s+(?:default\s+)?)?(?:function|def|func|const)\s+([A-Za-z0-9_]+)/g;
-  while ((match = fnRegex.exec(code)) !== null) {
-    const name = match[1];
-    if (name.length > 1 && !['if', 'for', 'while', 'switch', 'return', 'let', 'var'].includes(name)) {
+  // Functions: JS/TS, Python def, Go func, struct types
+  const symbolRegex = /(?:func\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_]+)|type\s+([A-Za-z0-9_]+)\s+struct|def\s+([A-Za-z0-9_]+)|(?:export\s+)?(?:function|const)\s+([A-Za-z0-9_]+))/g;
+  while ((match = symbolRegex.exec(code)) !== null) {
+    const name = match[1] || match[2] || match[3] || match[4];
+    if (name && name.length > 1 && !['if', 'for', 'while', 'switch', 'return', 'let', 'var', 'nil', 'err'].includes(name)) {
       if (!components.includes(name)) components.push(name);
     }
   }
 
-  // 4. Extract States (React useState, Vue ref/reactive, Svelte $state)
-  const states: StateVariable[] = [];
-  const reactStateRegex = /const\s+\[\s*(\w+)\s*,\s*(\w+)\s*\]\s*=\s*useState(?:<[^>]+>)?\(([^)]*)\)/g;
-  while ((match = reactStateRegex.exec(code)) !== null) {
-    states.push({
-      name: match[1],
-      setter: match[2],
-      initialValue: match[3].trim() || 'undefined',
-      purpose: `Tracks dynamic value of '${match[1]}' and triggers UI re-renders on update.`,
-      modifiedBy: [match[2]],
-    });
-  }
-  const vueStateRegex = /const\s+(\w+)\s*=\s*(?:ref|reactive)\(([^)]*)\)/g;
-  while ((match = vueStateRegex.exec(code)) !== null) {
-    states.push({
-      name: match[1],
-      setter: `${match[1]}.value`,
-      initialValue: match[2].trim() || 'undefined',
-      purpose: `Vue reactive variable '${match[1]}'. Modifying triggers DOM patch.`,
-      modifiedBy: [match[1]],
-    });
-  }
-  const svelteStateRegex = /let\s+(\w+)\s*=\s*\$state\(([^)]*)\)/g;
-  while ((match = svelteStateRegex.exec(code)) !== null) {
-    states.push({
-      name: match[1],
-      setter: `${match[1]} = ...`,
-      initialValue: match[2].trim() || 'undefined',
-      purpose: `Svelte 5 rune state '${match[1]}'. Fine-grained reactive signal.`,
-      modifiedBy: [match[1]],
-    });
-  }
-
-  // 5. Extract Props
-  const props: ComponentProp[] = [];
-  const propRegex = /(\w+)(\?)?:\s*([a-zA-Z0-9_<>[\]|& ]+);/g;
-  while ((match = propRegex.exec(code)) !== null) {
-    if (!['constructor', 'return', 'super'].includes(match[1])) {
-      props.push({ name: match[1], required: !match[2], type: match[3].trim() });
-    }
-  }
-
-  // 6. Extract Hooks & Dependencies
-  const hooks: string[] = [];
-  const hookRegex = /(use[A-Z]\w+)\(/g;
-  while ((match = hookRegex.exec(code)) !== null) {
-    if (!hooks.includes(match[1])) hooks.push(match[1]);
-  }
-
-  // 7. Extract API Endpoints & Calls (Client fetch + Server routes)
+  // 4. Universal Route & HTTP Endpoint Extractor (Go 1.22 ServeMux, Gin, FastAPI, Express)
   const apiCalls: ApiCall[] = [];
-  const clientFetchRegex = /fetch\(\s*['"`]([^'"`]+)['"`](?:,\s*\{[^}]*method:\s*['"](\w+)['"])?/g;
-  while ((match = clientFetchRegex.exec(code)) !== null) {
+  // Go 1.22 ServeMux: mux.HandleFunc("GET /products", h.ShowList)
+  const goMuxRegex = /(?:HandleFunc|Handle)\(\s*["'](?:(GET|POST|PUT|DELETE|PATCH)\s+)?(\/[^"']*)["']/g;
+  while ((match = goMuxRegex.exec(code)) !== null) {
     apiCalls.push({
-      endpoint: match[1],
-      method: (match[2] as any) || 'GET',
-      triggeredBy: 'HTTP Invocation',
-      purpose: `Dispatches network request to ${match[1]}`,
+      endpoint: match[2],
+      method: (match[1] as any) || 'GET',
+      triggeredBy: 'ServeMux Route Handler',
+      purpose: `Routes ${match[1] || 'GET'} ${match[2]}`,
     });
   }
-  // Server routes: Python FastAPI / Flask / Go Gin / Express
-  const serverRouteRegex = /@(?:app|router)\.(get|post|put|delete)\(\s*['"]([^'"]+)['"]/gi;
+  // FastAPI / Flask / Express / Gin
+  const serverRouteRegex = /(?:@(?:app|router)\.|r\.|app\.)(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]/gi;
   while ((match = serverRouteRegex.exec(code)) !== null) {
     apiCalls.push({
       endpoint: match[2],
       method: match[1].toUpperCase() as any,
-      triggeredBy: 'Route Handler',
-      purpose: `Exposes ${match[1].toUpperCase()} endpoint at ${match[2]}`,
+      triggeredBy: 'Route Endpoint',
+      purpose: `Exposes ${match[1].toUpperCase()} ${match[2]}`,
     });
   }
-  const goRouteRegex = /r\.(GET|POST|PUT|DELETE)\(\s*['"]([^'"]+)['"]/g;
-  while ((match = goRouteRegex.exec(code)) !== null) {
+  // Client fetch
+  const fetchRegex = /fetch\(\s*['"`]([^'"`]+)['"`](?:,\s*\{[^}]*method:\s*['"](\w+)['"])?/g;
+  while ((match = fetchRegex.exec(code)) !== null) {
     apiCalls.push({
-      endpoint: match[2],
-      method: match[1] as any,
-      triggeredBy: 'Gin Router',
-      purpose: `Gin endpoint listening on ${match[2]}`,
+      endpoint: match[1],
+      method: (match[2] as any) || 'GET',
+      triggeredBy: 'HTTP Client Invocation',
+      purpose: `Dispatches network request to ${match[1]}`,
     });
   }
 
-  // 8. Rendered Children / Tags
+  // 5. Universal Template Partials & Rendered Children
   const renderedChildren: string[] = [];
+  // Go template: {{template "product_card" .}}
+  const goTmplRegex = /\{\{template\s+["']([a-zA-Z0-9_]+)["']/g;
+  while ((match = goTmplRegex.exec(code)) !== null) {
+    if (!renderedChildren.includes(match[1])) renderedChildren.push(match[1]);
+  }
+  // JSX / XML tags
   const tagRegex = /<([A-Z]\w+)(?:\s|\/|>)/g;
   while ((match = tagRegex.exec(code)) !== null) {
     if (!['React', 'Fragment'].includes(match[1]) && !renderedChildren.includes(match[1])) {
       renderedChildren.push(match[1]);
     }
   }
+  // Script / Client JS linked in HTML
+  const scriptRegex = /<script\s+[^>]*src=["'][^"']*\/([a-zA-Z0-9_.]+)/g;
+  while ((match = scriptRegex.exec(code)) !== null) {
+    if (!renderedChildren.includes(match[1])) renderedChildren.push(match[1]);
+  }
 
-  // 9. Event Handlers
+  // 6. Universal State Extractor (React useState, Vue ref, Svelte $state, Go fields)
+  const states: StateVariable[] = [];
+  const stateRegex = /const\s+\[\s*(\w+)\s*,\s*(\w+)\s*\]\s*=\s*useState(?:<[^>]+>)?\(([^)]*)\)/g;
+  while ((match = stateRegex.exec(code)) !== null) {
+    states.push({
+      name: match[1],
+      setter: match[2],
+      initialValue: match[3].trim() || 'undefined',
+      purpose: `Tracks dynamic value of '${match[1]}'`,
+      modifiedBy: [match[2]],
+    });
+  }
+
+  // 7. Event Handlers
   const events: { name: string; handler: string; targetAction: string }[] = [];
   const eventRegex = /(?:on|@|v-on:)([A-Za-z]+)=\{(\w+)\}/g;
   while ((match = eventRegex.exec(code)) !== null) {
@@ -151,7 +138,6 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     });
   }
 
-  // Assign appropriate preview type
   let previewType: MiniPreviewType = isBackend ? 'api-schema' : 'generic';
   if (stack === 'vue') previewType = 'vue-template';
   if (stack === 'svelte') previewType = 'svelte-runes';
@@ -172,8 +158,8 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     exports: components.slice(0, 5),
     components,
     states,
-    props,
-    hooks,
+    props: [],
+    hooks: [],
     apiCalls,
     renderedChildren,
     events,
