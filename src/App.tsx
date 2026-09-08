@@ -123,6 +123,9 @@ export function App() {
         currentMode={layerMode}
         files={allFiles}
         viewScope={viewScope}
+        projectSummary={activeProject.description}
+        projectStack={activeProject.framework}
+        connectionCount={activeProject.connections?.length || 0}
         onChangeMode={setLayerMode}
         onChangeScope={setViewScope}
         onOpenIngest={() => setIsIngestOpen(true)}
