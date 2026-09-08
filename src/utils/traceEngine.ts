@@ -183,7 +183,7 @@ export function calculateLayout(
   // 3. PIPELINE EDGE RESOLVER: Connects nodes & labels what data is passed
   const edgeSet = new Set<string>();
 
-  // A. If AI provided verified connections, use them first!
+  // A. If AI provided verified connections, use them strictly (Zero duplicate guessing!)
   if (connections && connections.length > 0) {
     connections.forEach((conn) => {
       const src = files.find((f) => f.path.includes(conn.from) || conn.from.includes(f.path) || f.name === conn.from);
@@ -210,6 +210,10 @@ export function calculateLayout(
             dataPassed: conn.dataPassed,
             whatHappens: conn.whatHappens,
             codeSnippet: conn.codeSnippet,
+            callerFunction: conn.callerFunction,
+            targetFunction: conn.targetFunction,
+            parametersPassed: conn.parametersPassed,
+            whyCalled: conn.whyCalled,
             type: 'data',
             isActive: false,
             animated: false,
@@ -217,9 +221,22 @@ export function calculateLayout(
         }
       }
     });
+
+    return { nodes, edges };
   }
 
-  // B. Cross-directory pipeline linkages including middlewares & client scripts
+  // B. Fallback Heuristics (Only runs when AI connections have not yet been generated)
+  // Pre-calculate which domains have security guards to prevent duplicate bypass lines!
+  const domainsWithGuards = new Set<string>();
+  files.forEach((f) => {
+    if (f.pipelineRole === 'guard') {
+      const p = f.path.toLowerCase();
+      if (p.includes('auth')) domainsWithGuards.add('auth');
+      if (p.includes('product')) domainsWithGuards.add('product');
+      if (p.includes('order') || p.includes('cart')) domainsWithGuards.add('order');
+    }
+  });
+
   files.forEach((src) => {
     files.forEach((tgt) => {
       if (src.id === tgt.id) return;
@@ -243,7 +260,7 @@ export function calculateLayout(
           to: tgt.id,
           fromName: src.name,
           toName: tgt.name,
-          label: 'applies middleware',
+          label: 'applies guard',
           dataPassed: 'HTTP handler stack',
           whatHappens: `${src.name} registers security guard ${tgt.name} to intercept incoming traffic.`,
           type: 'data',
@@ -269,14 +286,15 @@ export function calculateLayout(
       // 3. View/Script -> Middleware/Guard (login.html -> auth.go, homepage.js -> csrf.go)
       else if ((srcRole === 'view' || srcRole === 'script') && tgtRole === 'guard' && (isDomainMatch || tgt.path.includes('csrf') || tgt.path.includes('session'))) {
         edgeSet.add(key);
+        const routeMethod = src.routes?.[0] ? src.routes[0].split(' ')[0] : 'POST';
         edges.push({
           id: `edge-${src.id}-${tgt.id}`,
           from: src.id,
           to: tgt.id,
           fromName: src.name,
           toName: tgt.name,
-          label: 'HTTP request',
-          dataPassed: 'Intercepts request',
+          label: `${routeMethod} request`,
+          dataPassed: 'Intercepts credentials',
           whatHappens: `${src.name} dispatches action intercepted by security guard ${tgt.name}.`,
           type: 'data',
         });
@@ -298,8 +316,8 @@ export function calculateLayout(
         });
       }
 
-      // 5. View -> Controller (direct if no guard in domain)
-      else if (isDomainMatch && (srcRole === 'view' || src.type === 'page') && (tgtRole === 'controller' || tgt.path.includes('handler'))) {
+      // 5. View -> Controller (Direct ONLY if NO guard exists for this domain! Zero duplicate bypass!)
+      else if (isDomainMatch && !domainsWithGuards.has(srcDomain) && (srcRole === 'view' || src.type === 'page') && (tgtRole === 'controller' || tgt.path.includes('handler'))) {
         edgeSet.add(key);
         edges.push({
           id: `edge-${src.id}-${tgt.id}`,
@@ -309,7 +327,7 @@ export function calculateLayout(
           toName: tgt.name,
           label: 'POST /form',
           dataPassed: 'Form submit payload',
-          whatHappens: `${src.name} sends user action to ${tgt.name} controller.`,
+          whatHappens: `${src.name} sends user action directly to ${tgt.name} controller.`,
           type: 'data',
         });
       }
