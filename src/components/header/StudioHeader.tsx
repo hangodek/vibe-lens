@@ -78,15 +78,19 @@ export function StudioHeader({
               VibeLens
             </span>
 
-            {/* Persistent AI Verification Badge */}
+            {/* AI Analysis Status Badge — honest: only green when edges exist */}
             <div className="relative">
               <button
                 onClick={() => setIsAiStatusOpen(!isAiStatusOpen)}
-                className="flex items-center gap-1.5 text-[10px] font-mono bg-[#10b981]/10 hover:bg-[#10b981]/20 text-[#34d399] border border-[#10b981]/30 px-2 py-0.5 rounded-full font-medium transition-colors cursor-pointer"
+                className={`flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full font-medium transition-colors cursor-pointer border ${
+                  connectionCount > 0
+                    ? 'bg-[#10b981]/10 hover:bg-[#10b981]/20 text-[#34d399] border-[#10b981]/30'
+                    : 'bg-[#f59e0b]/10 hover:bg-[#f59e0b]/20 text-[#fbbf24] border-[#f59e0b]/30'
+                }`}
                 title="Click to view AI analysis summary"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-[#34d399] animate-pulse" />
-                <span className="capitalize">{activeTool} Verified</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${connectionCount > 0 ? 'bg-[#34d399] animate-pulse' : 'bg-[#fbbf24]'}`} />
+                <span className="capitalize">{connectionCount > 0 ? `${activeTool} Verified` : 'Not analyzed'}</span>
               </button>
 
               {/* AI Verification Dropdown Card */}
@@ -99,8 +103,8 @@ export function StudioHeader({
                   <div className="absolute left-0 top-7 z-50 w-80 bg-[#0a0b0e] border border-[#23252a] rounded-xl shadow-2xl p-4 space-y-3 animate-in fade-in">
                     <div className="flex items-center justify-between border-b border-[#1c1d22] pb-2">
                       <div className="flex items-center gap-1.5 text-xs font-semibold text-[#f7f8f8]">
-                        <CheckCircle2 className="w-4 h-4 text-[#34d399]" />
-                        <span>AI Architecture Verified</span>
+                        <CheckCircle2 className={`w-4 h-4 ${connectionCount > 0 ? 'text-[#34d399]' : 'text-[#fbbf24]'}`} />
+                        <span>{connectionCount > 0 ? 'AI Architecture Verified' : 'AI Analysis Pending'}</span>
                       </div>
                       <span className="text-[10px] font-mono uppercase text-[#828fff] bg-[#5e6ad2]/15 px-1.5 py-0.2 rounded">
                         {activeTool}
@@ -121,10 +125,14 @@ export function StudioHeader({
                       </p>
                     </div>
 
-                    {connectionCount > 0 && (
+                    {connectionCount > 0 ? (
                       <div className="flex items-center gap-1.5 text-[11px] font-mono text-[#34d399] bg-[#121318] p-2 rounded border border-[#23252a]">
                         <Zap className="w-3.5 h-3.5" />
                         <span>{connectionCount} AI-verified connections active</span>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] font-mono text-[#fbbf24] bg-[#121318] p-2 rounded border border-[#f59e0b]/30">
+                        No connections yet — run Re-Analyze below so OpenCode maps this project.
                       </div>
                     )}
 

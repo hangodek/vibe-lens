@@ -67,6 +67,17 @@ export function useCodebase() {
     return ws ? ws.files : allFiles;
   }, [allFiles, activeWorkspaceId, workspaces, viewScope]);
 
+  // Retarget inspector selection when the workspace changes: if the selected
+  // file isn't in the displayed set, focus the first displayed file so the
+  // sidebar never describes a node from another workspace.
+  useEffect(() => {
+    if (!selectedFileId) return;
+    const visible = new Set(displayedFiles.map((f) => f.id));
+    if (!visible.has(selectedFileId) && displayedFiles.length > 0) {
+      setSelectedFileId(displayedFiles[0].id);
+    }
+  }, [displayedFiles, selectedFileId]);
+
   const selectedFile = useMemo(() => {
     return allFiles.find((f) => f.id === selectedFileId) || allFiles[0] || null;
   }, [allFiles, selectedFileId]);
