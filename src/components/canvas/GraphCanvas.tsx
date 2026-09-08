@@ -1,8 +1,8 @@
-import { useState, memo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import type { CanvasNode, CanvasEdge } from '../../types/graph';
 import { useGraphCanvas } from '../../hooks/useGraphCanvas';
 import { GraphNode } from './GraphNode';
-import { ConnectionEdge } from './ConnectionEdge';
+import { ConnectionEdge, computeEdgePillGeometry } from './ConnectionEdge';
 import { EdgeDetailDrawer } from './EdgeDetailDrawer';
 import { Minimap } from './Minimap';
 import { ZoomIn, ZoomOut, RotateCcw, Maximize2 } from 'lucide-react';
@@ -63,16 +63,81 @@ export function GraphCanvasComponent({
   }
 
   // Pre-calculate deterministic in/out port ordering so parallel lines never overlap
-  const outEdgesMap = new Map<string, string[]>();
-  const inEdgesMap = new Map<string, string[]>();
+  const outEdgesMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    edges.forEach((e) => {
+      if (!map.has(e.from)) map.set(e.from, []);
+      map.get(e.from)!.push(e.id);
+    });
+    return map;
+  }, [edges]);
 
-  edges.forEach((e) => {
-    if (!outEdgesMap.has(e.from)) outEdgesMap.set(e.from, []);
-    outEdgesMap.get(e.from)!.push(e.id);
+  const inEdgesMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    edges.forEach((e) => {
+      if (!map.has(e.to)) map.set(e.to, []);
+      map.get(e.to)!.push(e.id);
+    });
+    return map;
+  }, [edges]);
 
-    if (!inEdgesMap.has(e.to)) inEdgesMap.set(e.to, []);
-    inEdgesMap.get(e.to)!.push(e.id);
-  });
+  // Pre-calculate and relax 2D pill positions across ALL edges so no two pills on the canvas ever collide
+  const edgePillPositions = useMemo(() => {
+    const posMap: Record<string, { x: number; y: number; width: number; height: number }> = {};
+    edges.forEach((edge) => {
+      const fromNode = nodeMap.get(edge.from);
+      const toNode = nodeMap.get(edge.to);
+      if (!fromNode || !toNode) return;
+
+      const fromEdges = outEdgesMap.get(edge.from) || [];
+      const outPortIndex = fromEdges.indexOf(edge.id);
+      const totalOutPorts = fromEdges.length;
+
+      const toEdges = inEdgesMap.get(edge.to) || [];
+      const inPortIndex = toEdges.indexOf(edge.id);
+      const totalInPorts = toEdges.length;
+
+      posMap[edge.id] = computeEdgePillGeometry(
+        edge,
+        fromNode,
+        toNode,
+        outPortIndex,
+        totalOutPorts,
+        inPortIndex,
+        totalInPorts
+      );
+    });
+
+    // 2D bounding-box collision relaxation pass (3 iterations)
+    const edgeList = edges.filter((e) => posMap[e.id]);
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 0; i < edgeList.length; i++) {
+        for (let j = i + 1; j < edgeList.length; j++) {
+          const p1 = posMap[edgeList[i].id];
+          const p2 = posMap[edgeList[j].id];
+          if (!p1 || !p2) continue;
+
+          const dx = Math.abs(p1.x - p2.x);
+          const dy = Math.abs(p1.y - p2.y);
+          const requiredX = (p1.width + p2.width) / 2 + 14;
+          const requiredY = 28;
+
+          if (dx < requiredX && dy < requiredY) {
+            const pushY = (requiredY - dy) / 2 + 2;
+            if (p1.y <= p2.y) {
+              p1.y -= pushY;
+              p2.y += pushY;
+            } else {
+              p1.y += pushY;
+              p2.y -= pushY;
+            }
+          }
+        }
+      }
+    }
+
+    return posMap;
+  }, [edges, nodeMap, outEdgesMap, inEdgesMap]);
 
   return (
     <div
@@ -160,6 +225,7 @@ export function GraphCanvasComponent({
                   totalOutPorts={totalOutPorts}
                   inPortIndex={inPortIndex}
                   totalInPorts={totalInPorts}
+                  overridePillPos={edgePillPositions[edge.id]}
                   layer="pill"
                   onSelect={setSelectedEdge}
                 />

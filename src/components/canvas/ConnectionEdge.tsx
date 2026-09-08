@@ -11,6 +11,7 @@ interface ConnectionEdgeProps {
   totalOutPorts?: number;
   inPortIndex?: number;
   totalInPorts?: number;
+  overridePillPos?: { x: number; y: number };
   layer?: 'all' | 'path' | 'pill';
   onSelect?: (edge: CanvasEdge) => void;
 }
@@ -55,6 +56,93 @@ function parseEdgePill(text: string): { method: string; detail: string; color: s
   return { method: 'CALL', detail: clean, color: '#828fff', border: '#4f46e566' };
 }
 
+export function computeEdgePillGeometry(
+  edge: CanvasEdge,
+  fromNode: CanvasNode,
+  toNode: CanvasNode,
+  outPortIndex = 0,
+  totalOutPorts = 1,
+  inPortIndex = 0,
+  totalInPorts = 1
+): { x: number; y: number; width: number; height: number } {
+  const rawStartX = fromNode.x + fromNode.width;
+  const rawEndX = toNode.x;
+  const isLeftToRight = rawEndX >= rawStartX - 20;
+
+  let startX: number;
+  let startY: number;
+  let endX: number;
+  let endY: number;
+  let controlX1: number;
+  let controlY1: number;
+  let controlX2: number;
+  let controlY2: number;
+  let pillT = 0.5;
+
+  if (isLeftToRight) {
+    startX = fromNode.x + fromNode.width;
+    startY = totalOutPorts > 1
+      ? fromNode.y + (fromNode.height * (outPortIndex + 1)) / (totalOutPorts + 1)
+      : fromNode.y + fromNode.height / 2;
+
+    endX = toNode.x;
+    endY = totalInPorts > 1
+      ? toNode.y + (toNode.height * (inPortIndex + 1)) / (totalInPorts + 1)
+      : toNode.y + toNode.height / 2;
+
+    const dx = Math.abs(endX - startX);
+    const isCrossColumnJump = dx > 500;
+
+    if (isCrossColumnJump) {
+      const archY = Math.min(startY, endY) - 105;
+      controlX1 = startX + 90;
+      controlY1 = archY;
+      controlX2 = endX - 90;
+      controlY2 = archY;
+      pillT = 0.32;
+    } else {
+      controlX1 = startX + Math.max(dx * 0.45, 55);
+      controlY1 = startY;
+      controlX2 = endX - Math.max(dx * 0.45, 55);
+      controlY2 = endY;
+
+      pillT = totalInPorts > 1
+        ? 0.32 + (inPortIndex / Math.max(1, totalInPorts - 1)) * 0.36
+        : totalOutPorts > 1
+        ? 0.32 + (outPortIndex / Math.max(1, totalOutPorts - 1)) * 0.36
+        : 0.5;
+    }
+  } else {
+    startX = fromNode.x;
+    startY = fromNode.y + fromNode.height * 0.7;
+    endX = toNode.x + toNode.width;
+    endY = toNode.y + toNode.height * 0.7;
+
+    const dx = Math.abs(startX - endX) * 0.35;
+    const dy = Math.max(Math.abs(endY - startY), 70);
+    controlX1 = startX - Math.max(dx, 70);
+    controlY1 = startY + dy * 0.4;
+    controlX2 = endX + Math.max(dx, 70);
+    controlY2 = endY + dy * 0.4;
+    pillT = 0.5;
+  }
+
+  const { x, y } = getCubicBezierPoint(
+    pillT,
+    startX, startY,
+    controlX1, controlY1,
+    controlX2, controlY2,
+    endX, endY
+  );
+
+  const rawText = edge.label || edge.dataPassed || '';
+  const parsed = parseEdgePill(rawText);
+  const pillLabel = `${parsed.method} ${parsed.detail}`;
+  const width = Math.min(160, Math.max(68, pillLabel.length * 6.5 + 18));
+
+  return { x, y, width, height: 26 };
+}
+
 function ConnectionEdgeComponent({
   edge,
   fromNode,
@@ -64,6 +152,7 @@ function ConnectionEdgeComponent({
   totalOutPorts = 1,
   inPortIndex = 0,
   totalInPorts = 1,
+  overridePillPos,
   layer = 'all',
   onSelect,
 }: ConnectionEdgeProps) {
@@ -134,13 +223,16 @@ function ConnectionEdgeComponent({
   }
 
   // Calculate the EXACT mathematical point on the cubic Bezier curve for the pill
-  const { x: pillX, y: pillY } = getCubicBezierPoint(
+  const computedPoint = getCubicBezierPoint(
     pillT,
     startX, startY,
     controlX1, controlY1,
     controlX2, controlY2,
     endX, endY
   );
+
+  const pillX = overridePillPos ? overridePillPos.x : computedPoint.x;
+  const pillY = overridePillPos ? overridePillPos.y : computedPoint.y;
 
   const pathD = `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
 
