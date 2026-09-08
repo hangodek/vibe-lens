@@ -12,7 +12,7 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Auto-fit / Frame All camera
+  // Auto-fit / Frame All camera with active pipeline prioritization
   const autoFit = useCallback(() => {
     if (!canvasRef.current || initialNodes.length === 0) return;
     const rect = canvasRef.current.getBoundingClientRect();
@@ -24,7 +24,11 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     let minY = Infinity;
     let maxY = -Infinity;
 
-    initialNodes.forEach((n) => {
+    // Prioritize active pipeline steps over idle storage cards in trace mode
+    const activePipelineNodes = initialNodes.filter((n) => n.badge !== 'Idle');
+    const nodesToFrame = activePipelineNodes.length > 0 ? activePipelineNodes : initialNodes;
+
+    nodesToFrame.forEach((n) => {
       const pos = nodePositions[n.id] || { x: n.x, y: n.y };
       if (pos.x < minX) minX = pos.x;
       if (pos.x + n.width > maxX) maxX = pos.x + n.width;
@@ -32,12 +36,12 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
       if (pos.y + n.height > maxY) maxY = pos.y + n.height;
     });
 
-    const graphWidth = Math.max(maxX - minX + 120, 400);
-    const graphHeight = Math.max(maxY - minY + 120, 300);
+    const graphWidth = Math.max(maxX - minX + 160, 400);
+    const graphHeight = Math.max(maxY - minY + 160, 300);
 
-    const zoomX = (width - 100) / graphWidth;
-    const zoomY = (height - 100) / graphHeight;
-    const targetZoom = Math.min(Math.max(Math.min(zoomX, zoomY), 0.3), 1.1);
+    const zoomX = (width - 120) / graphWidth;
+    const zoomY = (height - 120) / graphHeight;
+    const targetZoom = Math.min(Math.max(Math.min(zoomX, zoomY), 0.4), 1.05);
 
     const centerX = minX + (maxX - minX) / 2;
     const centerY = minY + (maxY - minY) / 2;
@@ -45,7 +49,7 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     setViewport({
       x: Math.round(width / 2 - centerX * targetZoom),
       y: Math.round(height / 2 - centerY * targetZoom),
-      zoom: targetZoom,
+      zoom: Number(targetZoom.toFixed(2)),
     });
   }, [initialNodes, nodePositions]);
 
@@ -54,9 +58,16 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     setNodePositions({});
     const timer = setTimeout(() => {
       autoFit();
-    }, 50);
+    }, 60);
     return () => clearTimeout(timer);
   }, [scopeKey, autoFit]);
+
+  // Re-fit on window resize
+  useEffect(() => {
+    const handleResize = () => autoFit();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [autoFit]);
 
   // Non-passive wheel event listener to PREVENT BROWSER ZOOM and enable focal zoom
   useEffect(() => {
