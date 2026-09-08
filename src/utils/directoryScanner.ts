@@ -124,8 +124,10 @@ function packageProject(name: string, files: ParsedCodeFile[]): VibeProject {
   const detectedStack = files.length > 0 ? detectStack(files[0].path, files[0].code) : null;
   const framework = detectedStack?.frameworkName || 'Fullstack Application';
 
+  const slug = name.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+
   return {
-    id: 'local-' + Math.random().toString(36).substring(2, 9),
+    id: `local-${slug}`,
     name: name,
     framework: `${framework} (${files.length} source files)`,
     tagline: 'Scanned directly from local disk with zero cloud upload',

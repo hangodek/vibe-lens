@@ -12,93 +12,6 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // Reset custom node drag positions whenever scope changes
-  useEffect(() => {
-    setNodePositions({});
-  }, [scopeKey]);
-
-  // Non-passive wheel event listener to PREVENT BROWSER ZOOM and enable focal zoom
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-
-    const handleNativeWheel = (e: globalThis.WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const rect = el.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      setViewport((prev) => {
-        let zoomFactor = 1;
-        if (e.ctrlKey) {
-          zoomFactor = Math.exp(-e.deltaY * 0.015);
-        } else {
-          zoomFactor = e.deltaY < 0 ? 1.09 : 0.91;
-        }
-
-        const nextZoom = Math.min(Math.max(prev.zoom * zoomFactor, 0.2), 2.5);
-        const newX = mouseX - (mouseX - prev.x) * (nextZoom / prev.zoom);
-        const newY = mouseY - (mouseY - prev.y) * (nextZoom / prev.zoom);
-
-        return {
-          x: Math.round(newX * 10) / 10,
-          y: Math.round(newY * 10) / 10,
-          zoom: nextZoom,
-        };
-      });
-    };
-
-    el.addEventListener('wheel', handleNativeWheel, { passive: false });
-    return () => {
-      el.removeEventListener('wheel', handleNativeWheel);
-    };
-  }, []);
-
-  // Pan canvas via mouse drag with hardware vsync requestAnimationFrame
-  const handleMouseDown = useCallback((e: MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.canvas-node')) return;
-    setIsPanning(true);
-    setPanStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
-  }, [viewport]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isPanning && !draggingNodeId) return;
-
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-
-    const clientX = e.clientX;
-    const clientY = e.clientY;
-
-    rafRef.current = requestAnimationFrame(() => {
-      if (isPanning) {
-        setViewport((prev) => ({
-          ...prev,
-          x: clientX - panStart.x,
-          y: clientY - panStart.y,
-        }));
-      } else if (draggingNodeId) {
-        const newX = (clientX - viewport.x) / viewport.zoom - dragOffset.x;
-        const newY = (clientY - viewport.y) / viewport.zoom - dragOffset.y;
-        setNodePositions((prev) => ({
-          ...prev,
-          [draggingNodeId]: { x: Math.round(newX), y: Math.round(newY) }
-        }));
-      }
-    });
-  }, [isPanning, panStart, draggingNodeId, viewport, dragOffset]);
-
-  const handleMouseUp = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    setIsPanning(false);
-    setDraggingNodeId(null);
-  }, []);
-
-  const zoomIn = () => setViewport((v) => ({ ...v, zoom: Math.min(v.zoom + 0.15, 2.5) }));
-  const zoomOut = () => setViewport((v) => ({ ...v, zoom: Math.max(v.zoom - 0.15, 0.2) }));
-  const resetView = () => setViewport({ x: 60, y: 50, zoom: 0.85 });
-
   // Auto-fit / Frame All camera
   const autoFit = useCallback(() => {
     if (!canvasRef.current || initialNodes.length === 0) return;
@@ -136,6 +49,96 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     });
   }, [initialNodes, nodePositions]);
 
+  // Reset custom node drag positions and auto-center viewport whenever scope changes
+  useEffect(() => {
+    setNodePositions({});
+    const timer = setTimeout(() => {
+      autoFit();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [scopeKey, autoFit]);
+
+  // Non-passive wheel event listener to PREVENT BROWSER ZOOM and enable focal zoom
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+
+    const handleNativeWheel = (e: globalThis.WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const rect = el.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      setViewport((prev) => {
+        let zoomFactor = 1;
+        if (e.ctrlKey) {
+          zoomFactor = Math.exp(-e.deltaY * 0.015);
+        } else {
+          zoomFactor = e.deltaY < 0 ? 1.09 : 0.91;
+        }
+
+        const nextZoom = Math.min(Math.max(prev.zoom * zoomFactor, 0.2), 2.5);
+        const newX = mouseX - (mouseX - prev.x) * (nextZoom / prev.zoom);
+        const newY = mouseY - (mouseY - prev.y) * (nextZoom / prev.zoom);
+
+        return {
+          x: Math.round(newX),
+          y: Math.round(newY),
+          zoom: nextZoom,
+        };
+      });
+    };
+
+    el.addEventListener('wheel', handleNativeWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleNativeWheel);
+  }, []);
+
+  const handleMouseDown = useCallback((e: MouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('.canvas-node')) return;
+    setIsPanning(true);
+    setPanStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+  }, [viewport.x, viewport.y]);
+
+  const handleMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
+    if (draggingNodeId) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        const canvasX = (e.clientX - viewport.x) / viewport.zoom;
+        const canvasY = (e.clientY - viewport.y) / viewport.zoom;
+        setNodePositions((prev) => ({
+          ...prev,
+          [draggingNodeId]: {
+            x: Math.round(canvasX - dragOffset.x),
+            y: Math.round(canvasY - dragOffset.y),
+          },
+        }));
+      });
+      return;
+    }
+
+    if (!isPanning) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      setViewport((prev) => ({
+        ...prev,
+        x: Math.round(e.clientX - panStart.x),
+        y: Math.round(e.clientY - panStart.y),
+      }));
+    });
+  }, [isPanning, panStart, draggingNodeId, viewport, dragOffset]);
+
+  const handleMouseUp = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    setIsPanning(false);
+    setDraggingNodeId(null);
+  }, []);
+
+  const zoomIn = () => setViewport((v) => ({ ...v, zoom: Math.min(v.zoom + 0.15, 2.5) }));
+  const zoomOut = () => setViewport((v) => ({ ...v, zoom: Math.max(v.zoom - 0.15, 0.2) }));
+  const resetView = () => setViewport({ x: 60, y: 50, zoom: 0.85 });
+
   const startNodeDrag = (nodeId: string, e: MouseEvent, currentX: number, currentY: number) => {
     e.stopPropagation();
     setDraggingNodeId(nodeId);
@@ -147,15 +150,13 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     });
   };
 
-  // Merge default node positions with custom drag offsets
-  const activeNodes = initialNodes.map((node) => {
-    const custom = nodePositions[node.id];
-    return custom ? { ...node, x: custom.x, y: custom.y } : node;
+  const activeNodes = initialNodes.map((n) => {
+    const customPos = nodePositions[n.id];
+    return customPos ? { ...n, x: customPos.x, y: customPos.y } : n;
   });
 
   return {
     viewport,
-    setViewport,
     canvasRef,
     isPanning,
     handleMouseDown,

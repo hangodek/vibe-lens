@@ -7,6 +7,10 @@ interface ConnectionEdgeProps {
   fromNode: CanvasNode;
   toNode: CanvasNode;
   isHighlighted?: boolean;
+  outPortIndex?: number;
+  totalOutPorts?: number;
+  inPortIndex?: number;
+  totalInPorts?: number;
   onSelect?: (edge: CanvasEdge) => void;
 }
 
@@ -15,16 +19,15 @@ function ConnectionEdgeComponent({
   fromNode,
   toNode,
   isHighlighted = false,
+  outPortIndex = 0,
+  totalOutPorts = 1,
+  inPortIndex = 0,
+  totalInPorts = 1,
   onSelect,
 }: ConnectionEdgeProps) {
   const rawStartX = fromNode.x + fromNode.width;
   const rawEndX = toNode.x;
   const isLeftToRight = rawEndX >= rawStartX - 20;
-
-  // Port staggering so parallel lines entering/exiting the same node never stack
-  const hash = edge.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const startPortOffset = ((hash % 5) - 2) * 16; // -32, -16, 0, 16, 32
-  const endPortOffset = (((hash >> 2) % 5) - 2) * 16;
 
   let startX: number;
   let startY: number;
@@ -39,33 +42,46 @@ function ConnectionEdgeComponent({
 
   if (isLeftToRight) {
     startX = fromNode.x + fromNode.width;
-    startY = fromNode.y + fromNode.height / 2 + startPortOffset;
+    // Multi-port distribution: fan out vertically so lines never bundle into the same pixel
+    startY = totalOutPorts > 1
+      ? fromNode.y + (fromNode.height * (outPortIndex + 1)) / (totalOutPorts + 1)
+      : fromNode.y + fromNode.height / 2;
+
     endX = toNode.x;
-    endY = toNode.y + toNode.height / 2 + endPortOffset;
+    endY = totalInPorts > 1
+      ? toNode.y + (toNode.height * (inPortIndex + 1)) / (totalInPorts + 1)
+      : toNode.y + toNode.height / 2;
 
     const dx = Math.abs(endX - startX);
-    const isCrossColumnJump = dx > 340;
+    const isCrossColumnJump = dx > 450;
 
     if (isCrossColumnJump) {
       // Arch cleanly overhead so the line NEVER cuts through intermediate column cards
-      const archY = Math.min(startY, endY) - 75;
-      controlX1 = startX + 80;
+      const archY = Math.min(startY, endY) - 95;
+      controlX1 = startX + 90;
       controlY1 = archY;
-      controlX2 = endX - 80;
+      controlX2 = endX - 90;
       controlY2 = archY;
 
       // Position pill safely in the source node gutter (never inside middle column cards)
-      pillX = startX + 65;
-      pillY = startY - 22;
+      pillX = startX + 80;
+      pillY = startY - 24;
     } else {
-      // Normal adjacent node connection
-      controlX1 = startX + Math.max(dx * 0.5, 45);
+      // Normal connection with generous horizontal corridor
+      controlX1 = startX + Math.max(dx * 0.5, 50);
       controlY1 = startY;
-      controlX2 = endX - Math.max(dx * 0.5, 45);
+      controlX2 = endX - Math.max(dx * 0.5, 50);
       controlY2 = endY;
 
-      pillX = (startX + endX) / 2;
-      pillY = (startY + endY) / 2 + ((hash % 3) - 1) * 12;
+      // Deterministic staggered pill position along curve (28% to 72%) to guarantee ZERO label collisions
+      const t = totalInPorts > 1
+        ? 0.28 + (inPortIndex / (totalInPorts - 1)) * 0.44
+        : totalOutPorts > 1
+        ? 0.28 + (outPortIndex / (totalOutPorts - 1)) * 0.44
+        : 0.5;
+
+      pillX = startX + dx * t;
+      pillY = startY + (endY - startY) * t;
     }
   } else {
     // Backward routing / cycle: outward arc below
@@ -92,10 +108,10 @@ function ConnectionEdgeComponent({
   const strokeColor = active ? style.activeStroke : '#3b404d';
   const strokeWidth = active ? 2.5 : 1.5;
 
-  // Keep canvas pill short & crisp (under 20 chars) to prevent line crowding
+  // Keep canvas pill short & crisp (under 18 chars) to prevent line crowding
   const rawText = edge.label || edge.dataPassed || '';
-  const displayText = rawText.length > 20 ? rawText.slice(0, 19) + '…' : rawText;
-  const pillWidth = displayText ? Math.min(160, displayText.length * 6.5 + 16) : 0;
+  const displayText = rawText.length > 18 ? rawText.slice(0, 17) + '…' : rawText;
+  const pillWidth = displayText ? Math.min(150, displayText.length * 6.5 + 16) : 0;
 
   return (
     <g

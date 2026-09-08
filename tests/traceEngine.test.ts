@@ -147,10 +147,10 @@ describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
     expect(baselineY).toBe(190);
     traceNodes.forEach((n) => expect(n.y).toBe(baselineY));
 
-    // Verify spacing between each consecutive node is >= 200px
+    // Verify spacing between each consecutive node is >= 300px
     for (let i = 0; i < traceNodes.length - 1; i++) {
       const gap = traceNodes[i + 1].x - (traceNodes[i].x + traceNodes[i].width);
-      expect(gap).toBeGreaterThanOrEqual(200);
+      expect(gap).toBeGreaterThanOrEqual(300);
     }
 
     // Verify all edges travel strictly left-to-right (fromNode.x < toNode.x)

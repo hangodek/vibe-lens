@@ -41,8 +41,10 @@ export async function importFromZip(file: File): Promise<VibeProject> {
 
   const detected = detectStack(parsedFiles[0].path, parsedFiles[0].code);
 
+  const slug = projectName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+
   return {
-    id: 'zip-' + Math.random().toString(36).substring(2, 9),
+    id: `zip-${slug}`,
     name: projectName,
     framework: `${detected.frameworkName} (Zip Archive)`,
     tagline: `Extracted ${parsedFiles.length} files client-side`,

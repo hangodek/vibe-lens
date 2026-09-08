@@ -62,6 +62,18 @@ export function GraphCanvasComponent({
     });
   }
 
+  // Pre-calculate deterministic in/out port ordering so parallel lines never overlap
+  const outEdgesMap = new Map<string, string[]>();
+  const inEdgesMap = new Map<string, string[]>();
+
+  edges.forEach((e) => {
+    if (!outEdgesMap.has(e.from)) outEdgesMap.set(e.from, []);
+    outEdgesMap.get(e.from)!.push(e.id);
+
+    if (!inEdgesMap.has(e.to)) inEdgesMap.set(e.to, []);
+    inEdgesMap.get(e.to)!.push(e.id);
+  });
+
   return (
     <div
       ref={canvasRef}
@@ -93,6 +105,14 @@ export function GraphCanvasComponent({
             const toNode = nodeMap.get(edge.to);
             if (!fromNode || !toNode) return null;
 
+            const fromEdges = outEdgesMap.get(edge.from) || [];
+            const outPortIndex = fromEdges.indexOf(edge.id);
+            const totalOutPorts = fromEdges.length;
+
+            const toEdges = inEdgesMap.get(edge.to) || [];
+            const inPortIndex = toEdges.indexOf(edge.id);
+            const totalInPorts = toEdges.length;
+
             return (
               <g key={edge.id} className="pointer-events-auto">
                 <ConnectionEdge
@@ -100,6 +120,10 @@ export function GraphCanvasComponent({
                   isHighlighted={connectedEdgeIds.has(edge.id) || selectedEdge?.id === edge.id}
                   fromNode={fromNode}
                   toNode={toNode}
+                  outPortIndex={outPortIndex}
+                  totalOutPorts={totalOutPorts}
+                  inPortIndex={inPortIndex}
+                  totalInPorts={totalInPorts}
                   onSelect={setSelectedEdge}
                 />
               </g>
