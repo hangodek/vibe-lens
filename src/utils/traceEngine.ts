@@ -40,6 +40,8 @@ export function calculateLayout(
         type: file.type,
         role: file.pipelineRole,
         plainEnglish: file.description,
+        focalCode: file.focalCode,
+        focalLine: file.focalLine,
         inbound: file.flowExplanation?.inbound,
         outbound: file.flowExplanation?.outbound,
         routes: file.routes,
@@ -102,6 +104,8 @@ export function calculateLayout(
         type: file.type,
         role: file.pipelineRole,
         plainEnglish: file.description,
+        focalCode: file.focalCode,
+        focalLine: file.focalLine,
         inbound: file.flowExplanation?.inbound,
         outbound: file.flowExplanation?.outbound,
         routes: file.routes,
@@ -122,7 +126,7 @@ export function calculateLayout(
 
   // 2. UNIVERSAL 4-STAGE LEFT-TO-RIGHT PIPELINE LAYOUT
   // Stage 0: Views & Client Templates (Left)
-  // Stage 1: Routers, Gateways & Guards
+  // Stage 1: Routers, Gateways & Guards (Middlewares)
   // Stage 2: HTTP Controllers & Request Handlers
   // Stage 3: Business Services & Logic
   // Stage 4: Repositories & Database Storage (Right)
@@ -156,6 +160,8 @@ export function calculateLayout(
         type: file.type,
         role: file.pipelineRole,
         plainEnglish: file.description,
+        focalCode: file.focalCode,
+        focalLine: file.focalLine,
         inbound: file.flowExplanation?.inbound,
         outbound: file.flowExplanation?.outbound,
         routes: file.routes,
@@ -213,7 +219,7 @@ export function calculateLayout(
     });
   }
 
-  // B. Cross-directory pipeline linkages (View -> Controller -> Service -> Repository)
+  // B. Cross-directory pipeline linkages including middlewares & client scripts
   files.forEach((src) => {
     files.forEach((tgt) => {
       if (src.id === tgt.id) return;
@@ -228,8 +234,72 @@ export function calculateLayout(
 
       const isDomainMatch = srcDomain && tgtDomain && srcDomain === tgtDomain;
 
-      // View -> Controller (e.g. login.html -> auth/handler.go)
-      if (isDomainMatch && (srcRole === 'view' || src.type === 'page') && (tgtRole === 'controller' || tgt.path.includes('handler'))) {
+      // 1. Gateway -> Middleware (main.go -> csrf.go, auth.go)
+      if (srcRole === 'gateway' && tgtRole === 'guard') {
+        edgeSet.add(key);
+        edges.push({
+          id: `edge-${src.id}-${tgt.id}`,
+          from: src.id,
+          to: tgt.id,
+          fromName: src.name,
+          toName: tgt.name,
+          label: 'applies middleware',
+          dataPassed: 'HTTP handler stack',
+          whatHappens: `${src.name} registers security guard ${tgt.name} to intercept incoming traffic.`,
+          type: 'data',
+        });
+      }
+
+      // 2. View -> Client Script (home.html -> homepage.js)
+      else if ((srcRole === 'view' || src.type === 'page') && tgtRole === 'script' && isDomainMatch) {
+        edgeSet.add(key);
+        edges.push({
+          id: `edge-${src.id}-${tgt.id}`,
+          from: src.id,
+          to: tgt.id,
+          fromName: src.name,
+          toName: tgt.name,
+          label: 'binds script',
+          dataPassed: 'DOM event listeners',
+          whatHappens: `${src.name} loads interactive script ${tgt.name}.`,
+          type: 'render',
+        });
+      }
+
+      // 3. View/Script -> Middleware/Guard (login.html -> auth.go, homepage.js -> csrf.go)
+      else if ((srcRole === 'view' || srcRole === 'script') && tgtRole === 'guard' && (isDomainMatch || tgt.path.includes('csrf') || tgt.path.includes('session'))) {
+        edgeSet.add(key);
+        edges.push({
+          id: `edge-${src.id}-${tgt.id}`,
+          from: src.id,
+          to: tgt.id,
+          fromName: src.name,
+          toName: tgt.name,
+          label: 'HTTP request',
+          dataPassed: 'Intercepts request',
+          whatHappens: `${src.name} dispatches action intercepted by security guard ${tgt.name}.`,
+          type: 'data',
+        });
+      }
+
+      // 4. Middleware/Guard -> Controller (auth.go -> auth/handler.go)
+      else if (tgtRole === 'controller' && srcRole === 'guard' && (isDomainMatch || src.path.includes('session') || src.path.includes('auth'))) {
+        edgeSet.add(key);
+        edges.push({
+          id: `edge-${src.id}-${tgt.id}`,
+          from: src.id,
+          to: tgt.id,
+          fromName: src.name,
+          toName: tgt.name,
+          label: 'passes context',
+          dataPassed: 'Validated context',
+          whatHappens: `${src.name} passes verified request downstream to ${tgt.name} controller.`,
+          type: 'data',
+        });
+      }
+
+      // 5. View -> Controller (direct if no guard in domain)
+      else if (isDomainMatch && (srcRole === 'view' || src.type === 'page') && (tgtRole === 'controller' || tgt.path.includes('handler'))) {
         edgeSet.add(key);
         edges.push({
           id: `edge-${src.id}-${tgt.id}`,
@@ -244,7 +314,7 @@ export function calculateLayout(
         });
       }
 
-      // Controller -> Service (e.g. auth/handler.go -> auth/service.go)
+      // 6. Controller -> Service (auth/handler.go -> auth/service.go)
       else if (isDomainMatch && (srcRole === 'controller' || src.path.includes('handler')) && (tgtRole === 'service' || tgt.path.includes('service'))) {
         edgeSet.add(key);
         edges.push({
@@ -260,7 +330,7 @@ export function calculateLayout(
         });
       }
 
-      // Service -> Storage (e.g. auth/service.go -> auth/repository.go)
+      // 7. Service -> Storage (auth/service.go -> auth/repository.go)
       else if (isDomainMatch && (srcRole === 'service' || src.path.includes('service')) && (tgtRole === 'storage' || tgt.path.includes('repo') || tgt.path.includes('model'))) {
         edgeSet.add(key);
         edges.push({
