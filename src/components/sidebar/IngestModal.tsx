@@ -43,33 +43,40 @@ export function IngestModal({ isOpen, onClose, onAddFile, onLoadProject }: Inges
 
   // 1. Native Folder Scanner
   const handleScanFolder = async () => {
-    setIsLoading(true);
-    setErrorMsg(null);
-    setStatusMsg('Requesting local directory access...');
-    try {
-      if ('showDirectoryPicker' in window) {
+    if ('showDirectoryPicker' in window) {
+      setIsLoading(true);
+      setErrorMsg(null);
+      setStatusMsg('Requesting local directory access...');
+      try {
         const project = await scanLocalDirectoryWithPicker();
         onLoadProject(project);
         onClose();
-      } else {
-        folderInputRef.current?.click();
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          setErrorMsg(err.message || 'Could not scan local directory.');
+        }
+      } finally {
+        setIsLoading(false);
+        setStatusMsg(null);
       }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setErrorMsg(err.message || 'Could not scan local directory.');
-      }
-    } finally {
-      setIsLoading(false);
+    } else {
+      // No spinner here: the hidden folder input owns the loading state so a
+      // cancelled OS dialog can't leave the modal stuck in "loading".
+      setErrorMsg(null);
       setStatusMsg(null);
+      folderInputRef.current?.click();
     }
   };
 
   const handleFolderInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
+    const picked = e.target.files;
+    // Reset so the same folder can be re-picked after closing the modal
+    e.target.value = '';
     setIsLoading(true);
-    setStatusMsg(`Reading ${e.target.files.length} files...`);
+    setStatusMsg(`Reading ${picked.length} files...`);
     try {
-      const project = await scanDirectoryFromInput(e.target.files);
+      const project = await scanDirectoryFromInput(picked);
       onLoadProject(project);
       onClose();
     } catch (err: any) {

@@ -1,12 +1,13 @@
 import type { ParsedCodeFile, LayerMode, ExecutionTrace } from '../types/ast';
 import type { CanvasNode, CanvasEdge } from '../types/graph';
+import type { VibeMasterConnection } from '../types/vibeproject';
 
 export function calculateLayout(
   files: ParsedCodeFile[],
   mode: LayerMode,
   activeTrace?: ExecutionTrace,
   activeStepIndex: number = 0,
-  connections?: Array<{ from: string; to: string; whatHappens: string; dataPassed: string; codeSnippet?: string }>
+  connections?: VibeMasterConnection[]
 ): { nodes: CanvasNode[]; edges: CanvasEdge[] } {
   const nodes: CanvasNode[] = [];
   const edges: CanvasEdge[] = [];
@@ -91,7 +92,7 @@ export function calculateLayout(
     const idleFiles = files.filter((f) => !uniqueIds.includes(f.id));
     const IDLE_COLS = 4;
     const IDLE_WIDTH = 260;
-    const IDLE_HEIGHT = 85;
+    const IDLE_HEIGHT = 110;
 
     idleFiles.forEach((file, idx) => {
       const col = idx % IDLE_COLS;
@@ -185,9 +186,22 @@ export function calculateLayout(
 
   // A. If AI provided verified connections, use them strictly (Zero duplicate guessing!)
   if (connections && connections.length > 0) {
+    const resolveConnectionFile = (ref: string) => {
+      if (!ref) return undefined;
+      const exact = files.find((f) => f.path === ref);
+      if (exact) return exact;
+      const byName = files.find((f) => f.name === ref);
+      if (byName) return byName;
+      const normalize = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+      const normRef = normalize(ref);
+      return files.find((f) => {
+        const normPath = normalize(f.path);
+        return normPath === normRef || normPath.endsWith('/' + normRef) || normRef.endsWith('/' + normPath);
+      });
+    };
     connections.forEach((conn) => {
-      const src = files.find((f) => f.path.includes(conn.from) || conn.from.includes(f.path) || f.name === conn.from);
-      const tgt = files.find((f) => f.path.includes(conn.to) || conn.to.includes(f.path) || f.name === conn.to);
+      const src = resolveConnectionFile(conn.from);
+      const tgt = resolveConnectionFile(conn.to);
 
       if (src && tgt && src.id !== tgt.id) {
         const key = `${src.id}->${tgt.id}`;

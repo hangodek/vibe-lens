@@ -59,9 +59,9 @@ export function EdgeDetailDrawer({
           </div>
 
           {/* Flow Bridge Pill */}
-          <div className="flex flex-col items-center shrink-0 px-3">
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1c1d24] border border-[#5e6ad2]/50 text-[#828fff] text-xs font-mono font-medium shadow-[0_0_12px_rgba(94,106,210,0.2)]">
-              <span>{edge.dataPassed || edge.label || 'Passes Data'}</span>
+          <div className="flex flex-col items-center shrink-0 px-3 min-w-0 max-w-[240px]">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1c1d24] border border-[#5e6ad2]/50 text-[#828fff] text-xs font-mono font-medium shadow-[0_0_12px_rgba(94,106,210,0.2)] max-w-full">
+              <span className="truncate">{edge.dataPassed || edge.label || 'Passes Data'}</span>
               <ArrowRight className="w-3.5 h-3.5 text-[#5e6ad2]" />
             </div>
             {edge.parametersPassed && (
@@ -119,7 +119,7 @@ export function EdgeDetailDrawer({
                 <span className="font-semibold uppercase">Executing Code</span>
               </div>
               <button
-                onClick={() => onDeepDiveFile(fromNode.fileId)}
+                onClick={() => onDeepDiveFile(toNode.fileId)}
                 className="text-[10px] text-[#5e6ad2] hover:text-white flex items-center gap-1 cursor-pointer"
               >
                 <span>Deep Dive</span>

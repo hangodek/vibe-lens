@@ -53,14 +53,21 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     });
   }, [initialNodes, nodePositions]);
 
+  // Keep a ref to the latest autoFit so the scope effect below only
+  // re-fires on scopeKey changes — not on every drag (which changes
+  // nodePositions and therefore autoFit's identity).
+  const autoFitRef = useRef(autoFit);
+  autoFitRef.current = autoFit;
+
   // Reset custom node drag positions and auto-center viewport whenever scope changes
   useEffect(() => {
     setNodePositions({});
     const timer = setTimeout(() => {
-      autoFit();
+      autoFitRef.current();
     }, 60);
     return () => clearTimeout(timer);
-  }, [scopeKey, autoFit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeKey]);
 
   // Re-fit on window resize
   useEffect(() => {
@@ -107,7 +114,9 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
   }, []);
 
   const handleMouseDown = useCallback((e: MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('.canvas-node')) return;
+    const target = e.target as HTMLElement;
+    // Don't start panning from nodes or interactive UI chrome (toolbar, zoom controls, drawers)
+    if (target.closest('.canvas-node, button, input, select, textarea, a')) return;
     setIsPanning(true);
     setPanStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
   }, [viewport.x, viewport.y]);
@@ -144,6 +153,21 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     setIsPanning(false);
     setDraggingNodeId(null);
+  }, []);
+
+  // Release pan/drag even when the pointer is released outside the canvas
+  useEffect(() => {
+    const release = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      setIsPanning(false);
+      setDraggingNodeId(null);
+    };
+    window.addEventListener('mouseup', release);
+    window.addEventListener('mouseleave', release);
+    return () => {
+      window.removeEventListener('mouseup', release);
+      window.removeEventListener('mouseleave', release);
+    };
   }, []);
 
   const zoomIn = () => setViewport((v) => ({ ...v, zoom: Math.min(v.zoom + 0.15, 2.5) }));

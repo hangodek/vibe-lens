@@ -123,7 +123,10 @@ export function TracePlaybackBar({
       </div>
 
       {/* Step Stepper Progress Bar */}
-      <div className="grid grid-cols-5 gap-1.5 w-full pt-1">
+      <div
+        className="grid gap-1.5 w-full pt-1"
+        style={{ gridTemplateColumns: `repeat(${Math.max(activeTrace.steps.length, 1)}, minmax(0, 1fr))` }}
+      >
         {activeTrace.steps.map((step, idx) => {
           const isDone = idx < activeStepIndex;
           const isCurrent = idx === activeStepIndex;

@@ -1,15 +1,13 @@
 import { memo, type MouseEvent } from 'react';
 import type { CanvasNode } from '../../types/graph';
-import { 
-  FileCode, 
-  Layers, 
-  Cpu, 
-  Database, 
-  Globe, 
-  Boxes, 
+import {
+  Layers,
+  Cpu,
+  Database,
+  Globe,
+  Boxes,
   GripVertical,
   Route,
-  ArrowRight,
   ShieldAlert,
   ArrowDownRight
 } from 'lucide-react';
@@ -29,6 +27,7 @@ const ROLE_STYLES: Record<string, { label: string; badgeBg: string; badgeColor: 
   storage: { label: 'DATABASE REPO', badgeBg: '#05966922', badgeColor: '#34d399', border: '#05966955', iconColor: '#34d399' },
   guard: { label: 'SECURITY GUARD', badgeBg: '#d9770622', badgeColor: '#fbbf24', border: '#d9770655', iconColor: '#fbbf24' },
   gateway: { label: 'APP GATEWAY', badgeBg: '#e11d4822', badgeColor: '#fb7185', border: '#e11d4855', iconColor: '#fb7185' },
+  script: { label: 'CLIENT SCRIPT', badgeBg: '#eab30822', badgeColor: '#facc15', border: '#eab30855', iconColor: '#facc15' },
   utility: { label: 'UTILITY', badgeBg: '#4b556322', badgeColor: '#9ca3af', border: '#4b556355', iconColor: '#9ca3af' },
 };
 
@@ -106,9 +105,13 @@ function GraphNodeComponent({
     <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-[#f59e0b]/15 text-[#fbbf24] border border-[#f59e0b]/30 font-medium">
       Caution
     </span>
-  ) : (
+  ) : node.riskScore === 'low' ? (
     <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-[#10b981]/15 text-[#34d399] border border-[#10b981]/30 font-medium">
       Safe
+    </span>
+  ) : (
+    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-[#62666d]/15 text-[#8a8f98] border border-[#62666d]/30 font-medium">
+      Unrated
     </span>
   );
 

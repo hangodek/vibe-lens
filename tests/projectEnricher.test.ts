@@ -148,6 +148,84 @@ describe('Project Enricher (AI Master Data Integrator)', () => {
     expect(enriched.description).toBe('A secure authentication and session management portal.');
   });
 
+  it('does not crash when AI master file omits calls/calledBy', () => {
+    const masterNoCalls: VibeLensProjectMaster = {
+      ...dummyMaster,
+      files: {
+        'internal/auth/handler.go': {
+          path: 'internal/auth/handler.go',
+          name: 'handler.go',
+          role: 'controller',
+          plainEnglish: 'Handles login.',
+          inbound: 'POST /login',
+          outbound: 'Calls service',
+          calls: undefined as unknown as string[],
+          calledBy: undefined as unknown as string[],
+          dataShape: [
+            {
+              name: 'LoginCredentials',
+              kind: 'struct',
+              fields: [{ name: 'Email', type: 'string' }],
+            },
+          ],
+          blastRadius: {
+            score: 'high',
+            riskLabel: 'Core Auth Controller',
+            safeInvariants: [],
+            impactedFiles: [],
+          },
+          userJourneys: [],
+        },
+      },
+    };
+
+    const enriched = enrichProjectWithMaster(dummyProject, masterNoCalls);
+    const handler = enriched.files.find((f) => f.path === 'internal/auth/handler.go')!;
+    expect(handler.states.length).toBe(1);
+    expect(handler.states[0].modifiedBy).toEqual([]);
+  });
+
+  it('keeps project connections when AI returns empty connections', () => {
+    const projectWithConns: VibeProject = {
+      ...dummyProject,
+      connections: [
+        {
+          from: 'views/login.html',
+          to: 'internal/auth/handler.go',
+          whatHappens: 'Submits',
+          dataPassed: 'POST /login',
+        },
+      ],
+    };
+    const masterEmptyConns: VibeLensProjectMaster = {
+      ...dummyMaster,
+      connections: [],
+    };
+    const enriched = enrichProjectWithMaster(projectWithConns, masterEmptyConns);
+    expect(enriched.connections?.length).toBe(1);
+  });
+
+  it('skips journey steps whose paths do not match any project file', () => {
+    const masterBadPaths: VibeLensProjectMaster = {
+      ...dummyMaster,
+      journeys: [
+        {
+          id: 'journey-ghost',
+          title: 'Ghost Journey',
+          description: 'Has a bad path',
+          steps: [
+            { file: './nonexistent/ghost.go', action: 'Ghost step' },
+            { file: 'internal/auth/handler.go', action: 'Real step' },
+          ],
+        },
+      ],
+    };
+    const enriched = enrichProjectWithMaster(dummyProject, masterBadPaths);
+    expect(enriched.traces.length).toBe(1);
+    expect(enriched.traces[0].steps.length).toBe(1);
+    expect(enriched.traces[0].steps[0].activeNodeId).toBe('file-1');
+  });
+
   it('populates focalCode and focalLine from AI master', () => {
     const masterWithFocal: VibeLensProjectMaster = {
       ...dummyMaster,

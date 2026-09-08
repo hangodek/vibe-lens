@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import type { CanvasNode, CanvasEdge } from '../../types/graph';
 import { useGraphCanvas } from '../../hooks/useGraphCanvas';
 import { GraphNode } from './GraphNode';
@@ -42,9 +42,23 @@ export function GraphCanvasComponent({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<CanvasEdge | null>(null);
 
-  // Map to find nodes quickly for edge drawing
-  const nodeMap = new Map<string, CanvasNode>();
-  activeNodes.forEach((n) => nodeMap.set(n.id, n));
+  // Map to find nodes quickly for edge drawing (memoized: stable identity for downstream memos)
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, CanvasNode>();
+    activeNodes.forEach((n) => map.set(n.id, n));
+    return map;
+  }, [activeNodes]);
+
+  // Clear a stale edge selection when the workspace/trace changes or its endpoints vanish
+  useEffect(() => {
+    if (!selectedEdge) return;
+    const stillExists = edges.some((e) => e.id === selectedEdge.id);
+    const fromNode = nodeMap.get(selectedEdge.from);
+    const toNode = nodeMap.get(selectedEdge.to);
+    if (!stillExists || !fromNode || !toNode) {
+      setSelectedEdge(null);
+    }
+  }, [scopeKey, edges, nodeMap, selectedEdge]);
 
   // Determine active edge highlights for hovered or selected node
   const activeFocusId = hoveredNodeId || selectedFileId;
