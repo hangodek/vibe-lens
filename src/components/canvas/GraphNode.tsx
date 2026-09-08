@@ -70,6 +70,19 @@ function formatNodeAction(node: CanvasNode): { method: string; target: string; i
   return { method: 'UNIT', target: node.name, isPost: false, isSql: false, isGuard: false };
 }
 
+function formatFlowFootprint(text: string | undefined, fallback: string): string {
+  if (!text) return fallback;
+  const clean = text.replace(/^(receives|dispatches|calls|returns|passes)\s+/i, '').trim();
+  if (clean.length <= 16) return clean;
+  // If contains route e.g. POST /login
+  const routeMatch = clean.match(/(POST|GET|PUT|DELETE|PATCH)\s+\/[a-zA-Z0-9_/-]+/i);
+  if (routeMatch) return routeMatch[0];
+  // If contains method call e.g. service.Authenticate
+  const callMatch = clean.match(/([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)/);
+  if (callMatch) return callMatch[1];
+  return clean.slice(0, 15) + '…';
+}
+
 function GraphNodeComponent({
   node,
   isSelected,
@@ -80,6 +93,8 @@ function GraphNodeComponent({
   const roleKey = node.role || (node.type === 'page' ? 'view' : node.type === 'api' ? 'controller' : node.type === 'store' ? 'storage' : node.type === 'hook' ? 'service' : 'utility');
   const roleStyle = ROLE_STYLES[roleKey] || ROLE_STYLES.utility;
   const action = formatNodeAction(node);
+  const inText = formatFlowFootprint(node.inbound, 'Caller');
+  const outText = formatFlowFootprint(node.outbound, 'Return');
 
   const IconComponent = roleKey === 'view' ? Globe : roleKey === 'storage' ? Database : roleKey === 'guard' ? ShieldAlert : roleKey === 'controller' ? Route : roleKey === 'service' ? Cpu : Boxes;
 
@@ -176,14 +191,14 @@ function GraphNodeComponent({
         </div>
       </div>
 
-      {/* 3. Dedicated Footer Bar: Inbound -> Outbound metrics cleanly contained INSIDE card */}
+      {/* 3. Dedicated Footer Bar: Active caller & target handoffs directly on card face */}
       <div className="h-[28px] px-3 bg-[#06070a] border-t border-[#1a1c22] flex items-center justify-between text-[9px] font-mono text-[#717682] shrink-0">
         <span className="truncate max-w-[115px]" title={node.inbound || 'Inbound trigger'}>
-          In: <span className="text-[#a0a5b1]">{node.inbound ? node.inbound.slice(0, 15) + '…' : 'Caller'}</span>
+          In: <span className="text-[#a0a5b1] font-medium">{inText}</span>
         </span>
         <ArrowDownRight className="w-2.5 h-2.5 text-[#5e6ad2] shrink-0" />
         <span className="truncate max-w-[115px] text-right" title={node.outbound || 'Outbound calls'}>
-          Out: <span className="text-[#a0a5b1]">{node.outbound ? node.outbound.slice(0, 15) + '…' : 'Return'}</span>
+          Out: <span className="text-[#a0a5b1] font-medium">{outText}</span>
         </span>
       </div>
     </div>
