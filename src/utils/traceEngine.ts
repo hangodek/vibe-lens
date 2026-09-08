@@ -11,10 +11,10 @@ export function calculateLayout(
   const nodes: CanvasNode[] = [];
   const edges: CanvasEdge[] = [];
 
-  const NODE_WIDTH = 280;
-  const NODE_HEIGHT = 145;
-  const GAP_X = 340; // Generous 340px horizontal breathing room between architectural columns
-  const GAP_Y = 72;  // Ample 72px vertical breathing room between rows
+  const NODE_WIDTH = 290;
+  const NODE_HEIGHT = 175;
+  const GAP_X = 440; // Wide 440px horizontal breathing room between architectural columns
+  const GAP_Y = 96;  // Generous 96px vertical breathing room between rows
 
   // 1. TRACE MODE: Clean Horizontal Assembly Line
   if (mode === 'trace' && activeTrace) {
@@ -24,7 +24,7 @@ export function calculateLayout(
       )
     );
 
-    // Baseline: Single straight horizontal line (y = 190) with 340px wide corridor
+    // Baseline: Single straight horizontal line (y = 190) with wide 420px corridor
     uniqueIds.forEach((fileId, index) => {
       const file = files.find((f) => f.id === fileId);
       if (!file) return;
@@ -46,7 +46,7 @@ export function calculateLayout(
         outbound: file.flowExplanation?.outbound,
         routes: file.routes,
         dataEntities: file.dataEntities,
-        x: 80 + index * (NODE_WIDTH + 340),
+        x: 80 + index * (NODE_WIDTH + 420),
         y: 190,
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
@@ -87,10 +87,10 @@ export function calculateLayout(
       });
     }
 
-    // Idle files placed well below the active pipeline (y = 560) in a clean 4-column shelf
+    // Idle files placed well below the active pipeline (y = 580) in a clean 4-column shelf
     const idleFiles = files.filter((f) => !uniqueIds.includes(f.id));
     const IDLE_COLS = 4;
-    const IDLE_WIDTH = 250;
+    const IDLE_WIDTH = 260;
     const IDLE_HEIGHT = 85;
 
     idleFiles.forEach((file, idx) => {
@@ -110,8 +110,8 @@ export function calculateLayout(
         outbound: file.flowExplanation?.outbound,
         routes: file.routes,
         dataEntities: file.dataEntities,
-        x: 80 + col * (IDLE_WIDTH + 45),
-        y: 560 + row * (IDLE_HEIGHT + 30),
+        x: 80 + col * (IDLE_WIDTH + 50),
+        y: 580 + row * (IDLE_HEIGHT + 35),
         width: IDLE_WIDTH,
         height: IDLE_HEIGHT,
         label: file.name,
