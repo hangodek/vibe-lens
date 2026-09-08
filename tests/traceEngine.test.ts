@@ -160,4 +160,63 @@ describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
       expect(tgt.x).toBeGreaterThan(src.x);
     });
   });
+
+  it('preserves AI causality fields (caller, target, parameters, why) on edges', () => {
+    const files = [
+      parseSourceCode('web/templates/auth/login.html', '<form action="/login">'),
+      parseSourceCode('internal/auth/handler.go', 'func Login() {}'),
+    ];
+
+    const aiConnections = [
+      {
+        from: 'web/templates/auth/login.html',
+        to: 'internal/auth/handler.go',
+        whatHappens: 'Visitor submits credentials',
+        dataPassed: 'POST /login',
+        codeSnippet: 'h.service.Authenticate(email, password)',
+        callerFunction: "<form action='/login'>",
+        targetFunction: 'Login(w, r)',
+        parametersPassed: 'email (string), password (string)',
+        whyCalled: 'To verify password hash with bcrypt',
+      },
+    ];
+
+    const { edges } = calculateLayout(files, 'screen', undefined, 0, aiConnections);
+
+    expect(edges.length).toBe(1);
+    expect(edges[0].callerFunction).toBe("<form action='/login'>");
+    expect(edges[0].targetFunction).toBe('Login(w, r)');
+    expect(edges[0].parametersPassed).toContain('email');
+    expect(edges[0].whyCalled).toContain('bcrypt');
+  });
+
+  it('eliminates duplicate View->Controller bypass when guard exists in domain', () => {
+    const files = [
+      parseSourceCode('web/templates/auth/login.html', '<form>'),
+      parseSourceCode('internal/shared/middleware/auth.go', 'func RequireAuth(next http.HandlerFunc) {}'),
+      parseSourceCode('internal/auth/handler.go', 'func Login() {}'),
+    ];
+
+    const { edges } = calculateLayout(files, 'screen', undefined, 0, []);
+
+    const viewToGuard = edges.filter(
+      (e) =>
+        (e.from === files[0].id && e.to === files[1].id) ||
+        (e.fromName === 'login.html' && e.toName === 'auth.go')
+    );
+    const guardToController = edges.filter(
+      (e) =>
+        (e.from === files[1].id && e.to === files[2].id) ||
+        (e.fromName === 'auth.go' && e.toName === 'handler.go')
+    );
+    const directBypass = edges.filter(
+      (e) =>
+        (e.from === files[0].id && e.to === files[2].id) ||
+        (e.fromName === 'login.html' && e.toName === 'handler.go')
+    );
+
+    expect(viewToGuard.length).toBeGreaterThanOrEqual(1);
+    expect(guardToController.length).toBeGreaterThanOrEqual(1);
+    expect(directBypass.length).toBe(0);
+  });
 });
