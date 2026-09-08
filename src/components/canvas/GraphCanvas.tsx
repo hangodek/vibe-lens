@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, memo } from 'react';
 import type { CanvasNode, CanvasEdge } from '../../types/graph';
 import { useGraphCanvas } from '../../hooks/useGraphCanvas';
+import { computeFocusDepths, edgeFocusDepth, nodeOpacityForDepth } from '../../utils/focusDepths';
 import { GraphNode } from './GraphNode';
 import { ConnectionEdge, computeEdgePillGeometry } from './ConnectionEdge';
 import { EdgeDetailDrawer } from './EdgeDetailDrawer';
@@ -11,6 +12,9 @@ interface GraphCanvasProps {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   selectedFileId: string | null;
+  selectedNodeId?: string | null;
+  /** When this id changes, the camera flies to center that node. */
+  focusNodeId?: string | null;
   activeTraceStepNodeId?: string;
   scopeKey?: string;
   onSelectNode: (fileId: string) => void;
@@ -20,6 +24,8 @@ export function GraphCanvasComponent({
   nodes,
   edges,
   selectedFileId,
+  selectedNodeId,
+  focusNodeId,
   activeTraceStepNodeId,
   scopeKey = '',
   onSelectNode,
@@ -35,9 +41,15 @@ export function GraphCanvasComponent({
     zoomOut,
     resetView,
     autoFit,
+    focusNode,
     startNodeDrag,
     activeNodes,
   } = useGraphCanvas(nodes, scopeKey);
+
+  // Fly the camera whenever the focus target changes (selection / trace step).
+  useEffect(() => {
+    if (focusNodeId) focusNode(focusNodeId);
+  }, [focusNodeId, focusNode]);
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<CanvasEdge | null>(null);
@@ -60,19 +72,31 @@ export function GraphCanvasComponent({
     }
   }, [scopeKey, edges, nodeMap, selectedEdge]);
 
-  // Determine active edge highlights for hovered or selected node
-  const activeFocusId = hoveredNodeId || selectedFileId;
-  const connectedEdgeIds = new Set<string>();
-  const connectedNodeIds = new Set<string>();
-
-  if (activeFocusId) {
-    connectedNodeIds.add(activeFocusId);
-    edges.forEach((e) => {
-      if (e.from === activeFocusId || e.to === activeFocusId) {
-        connectedEdgeIds.add(e.id);
-        connectedNodeIds.add(e.from);
-        connectedNodeIds.add(e.to);
+  // Hop-depth focus grading: the focus node stays bright, direct
+  // callers/callees stay bright, depth-2 dims, everything else fades.
+  // Hover previews live; selection pins. Falls back to the file id so
+  // file-level selection (explorer, trace steps) still works.
+  const activeFocusId = hoveredNodeId || selectedNodeId || selectedFileId;
+  const nodeDepths = useMemo(() => {
+    if (!activeFocusId) return new Map<string, number>();
+    const known = new Set(activeNodes.map((n) => n.id));
+    const seeds = activeNodes
+      .filter((n) => n.id === activeFocusId || n.fileId === activeFocusId)
+      .map((n) => n.id);
+    const merged = new Map<string, number>();
+    for (const seed of seeds) {
+      for (const [id, d] of computeFocusDepths(edges, seed, known)) {
+        if (!merged.has(id) || merged.get(id)! > d) merged.set(id, d);
       }
+    }
+    return merged;
+  }, [activeFocusId, activeNodes, edges]);
+
+  const connectedEdgeIds = new Set<string>();
+  if (activeFocusId) {
+    edges.forEach((e) => {
+      const d = edgeFocusDepth(nodeDepths.get(e.from), nodeDepths.get(e.to));
+      if (d <= 1) connectedEdgeIds.add(e.id);
     });
   }
 
@@ -122,9 +146,16 @@ export function GraphCanvasComponent({
       );
     });
 
-    // 2D bounding-box collision relaxation pass (3 iterations)
+    // 2D bounding-box collision relaxation pass (3 iterations).
+    // Same-column (vertical) pills resolve HORIZONTALLY so they stay inside
+    // their safe gap; everything else resolves vertically as before.
+    const isVerticalEdge = (e: CanvasEdge) => {
+      const f = nodeMap.get(e.from);
+      const t = nodeMap.get(e.to);
+      return !!f && !!t && Math.abs(f.x - t.x) < 40;
+    };
     const edgeList = edges.filter((e) => posMap[e.id]);
-    for (let pass = 0; pass < 3; pass++) {
+    for (let pass = 0; pass < 6; pass++) {
       for (let i = 0; i < edgeList.length; i++) {
         for (let j = i + 1; j < edgeList.length; j++) {
           const p1 = posMap[edgeList[i].id];
@@ -137,13 +168,24 @@ export function GraphCanvasComponent({
           const requiredY = 28;
 
           if (dx < requiredX && dy < requiredY) {
-            const pushY = (requiredY - dy) / 2 + 2;
-            if (p1.y <= p2.y) {
-              p1.y -= pushY;
-              p2.y += pushY;
+            if (isVerticalEdge(edgeList[i]) && isVerticalEdge(edgeList[j])) {
+              const pushX = (requiredX - dx) / 2 + 2;
+              if (p1.x <= p2.x) {
+                p1.x = Math.max(p1.width / 2 + 4, p1.x - pushX);
+                p2.x = p2.x + pushX;
+              } else {
+                p1.x = p1.x + pushX;
+                p2.x = Math.max(p2.width / 2 + 4, p2.x - pushX);
+              }
             } else {
-              p1.y += pushY;
-              p2.y -= pushY;
+              const pushY = (requiredY - dy) / 2 + 2;
+              if (p1.y <= p2.y) {
+                p1.y -= pushY;
+                p2.y += pushY;
+              } else {
+                p1.y += pushY;
+                p2.y -= pushY;
+              }
             }
           }
         }
@@ -195,11 +237,16 @@ export function GraphCanvasComponent({
               const inPortIndex = toEdges.indexOf(edge.id);
               const totalInPorts = toEdges.length;
 
+              const pathDepth = activeFocusId
+                ? edgeFocusDepth(nodeDepths.get(edge.from), nodeDepths.get(edge.to))
+                : undefined;
+
               return (
                 <ConnectionEdge
                   key={`path-${edge.id}`}
                   edge={edge}
                   isHighlighted={connectedEdgeIds.has(edge.id) || selectedEdge?.id === edge.id}
+                  focusDepth={pathDepth}
                   fromNode={fromNode}
                   toNode={toNode}
                   outPortIndex={outPortIndex}
@@ -228,11 +275,18 @@ export function GraphCanvasComponent({
               const inPortIndex = toEdges.indexOf(edge.id);
               const totalInPorts = toEdges.length;
 
+              const pillDepth = activeFocusId
+                ? edgeFocusDepth(nodeDepths.get(edge.from), nodeDepths.get(edge.to))
+                : undefined;
+              // Pills beyond depth 2 stay hidden so the focused path declutters.
+              if (pillDepth !== undefined && pillDepth >= 3) return null;
+
               return (
                 <ConnectionEdge
                   key={`pill-${edge.id}`}
                   edge={edge}
                   isHighlighted={connectedEdgeIds.has(edge.id) || selectedEdge?.id === edge.id}
+                  focusDepth={pillDepth}
                   fromNode={fromNode}
                   toNode={toNode}
                   outPortIndex={outPortIndex}
@@ -251,18 +305,23 @@ export function GraphCanvasComponent({
         {/* HTML Nodes Layer */}
         <div className="absolute inset-0 z-20 pointer-events-auto">
           {activeNodes.map((node) => {
-            const isFaded = activeFocusId && !connectedNodeIds.has(node.id) && !connectedNodeIds.has(node.fileId);
+            const depth = activeFocusId ? (nodeDepths.get(node.id) ?? Infinity) : undefined;
+            const opacity = nodeOpacityForDepth(depth);
+            const isSelected =
+              selectedNodeId != null
+                ? node.id === selectedNodeId
+                : node.fileId === selectedFileId;
 
             return (
               <div
                 key={node.id}
-                onMouseEnter={() => setHoveredNodeId(node.fileId)}
+                onMouseEnter={() => setHoveredNodeId(node.id)}
                 onMouseLeave={() => setHoveredNodeId(null)}
-                style={{ opacity: isFaded ? 0.35 : 1 }}
+                style={{ opacity, transition: 'opacity 150ms ease-out' }}
               >
                 <GraphNode
                   node={node}
-                  isSelected={node.fileId === selectedFileId}
+                  isSelected={isSelected}
                   isTraceActive={node.fileId === activeTraceStepNodeId}
                   onSelect={onSelectNode}
                   onStartDrag={startNodeDrag}

@@ -15,6 +15,16 @@ export interface RawFile {
   lineCount: number;
 }
 
+export interface RawSymbol {
+  name: string;
+  signature: string;
+  params: string[];
+  startLine: number;
+  endLine: number;
+  calls: Array<{ name: string; args: string; line: number }>;
+  calledBy: string[];
+}
+
 export interface AnalysisProgress {
   message: string;
   percent: number;
@@ -72,21 +82,52 @@ function selectCoreExecutionFiles(files: RawFile[]): RawFile[] {
   return selected;
 }
 
-function buildUnifiedPrompt(files: RawFile[], projectName: string): string {
+/**
+ * Build the AI prompt from the deterministic function IR — NOT from raw file
+ * dumps. The adapter already extracted symbols, signatures, line ranges and
+ * the call graph, so the AI's job is bounded to prose: what each function
+ * does, what its params mean, and why each call exists. The AI must never
+ * invent topology: unknown callees are dropped by the enricher.
+ */
+export function buildUnifiedPrompt(
+  files: RawFile[],
+  projectName: string,
+  symbolsByFile?: Record<string, RawSymbol[]>
+): string {
   const fileExcerpts = files
     .map((f) => {
+      const symbols = symbolsByFile?.[f.path];
+      if (symbols && symbols.length > 0) {
+        const symBlock = symbols
+          .map((s) => {
+            const calls = s.calls.length > 0
+              ? s.calls.map((c) => `      - calls ${c.name}(${c.args}) at line ${c.line}`).join('\n')
+              : '      - calls nothing in-file';
+            const calledBy = s.calledBy.length > 0 ? s.calledBy.join(', ') : 'nothing in-file (entrypoint or external caller)';
+            return `    - ${s.signature} [lines ${s.startLine}-${s.endLine}]\n      params: ${s.params.join(', ') || '(none)'}\n${calls}\n      called by: ${calledBy}`;
+          })
+          .join('\n');
+        return `=== FILE: ${f.path} ===\n  symbols:\n${symBlock}`;
+      }
       const lines = f.code.split('\n');
       const sample = lines.slice(0, 45).join('\n');
-      return `=== FILE: ${f.path} (${lines.length} total lines) ===\n${sample}`;
+      return `=== FILE: ${f.path} (${lines.length} total lines, no symbols extracted) ===\n${sample}`;
     })
     .join('\n\n');
 
   return `You are a Lead Software Architect analyzing this codebase for a visual architecture tool.
 Project: "${projectName}".
 
+The function call graph below was deterministically parsed from source — TRUST IT.
+Do NOT invent functions, calls, or line numbers that are not listed. If a call
+target is not in the symbol list, it is external (stdlib/browser/API) — describe
+it as such instead of guessing an internal target.
+
 Determine:
 1. Every file role, clear plain-English explanation of its purpose, and the key 5-15 line code snippet with line numbers that defines what this file does.
 2. The exact connection graph (including middlewares like auth.go/csrf.go and client scripts like homepage.js): which file connects to which, what data is passed, and what happens.
+3. For EVERY listed function symbol: one plain-English sentence of what it does,
+   what its parameters mean, and why each of its listed calls exists.
 
 Return ONLY a valid JSON object matching this exact schema:
 {
@@ -102,7 +143,15 @@ Return ONLY a valid JSON object matching this exact schema:
       "focalLine": 24,
       "inbound": "What triggers or passes into it",
       "outbound": "What it produces or passes out",
-      "routes": ["POST /login"]
+      "routes": ["POST /login"],
+      "symbols": [
+        {
+          "name": "exact function name as listed in SOURCE SYMBOLS",
+          "plainEnglish": "What THIS function does in one clear sentence",
+          "parametersPassed": "What each parameter means e.g. noteName (string): note identifier like C4",
+          "whyCalled": "Why callers invoke it e.g. To route playback by instrument mode"
+        }
+      ]
     }
   ],
   "connections": [
@@ -137,7 +186,7 @@ Return ONLY a valid JSON object matching this exact schema:
   ]
 }
 
-SOURCE FILES:
+SOURCE SYMBOLS (parsed, authoritative):
 ${fileExcerpts}`;
 }
 
@@ -146,7 +195,8 @@ export async function analyzeProjectWithAI(
   projectName: string,
   rawFiles: RawFile[],
   onProgress?: (p: AnalysisProgress) => void,
-  forceRescan = false
+  forceRescan = false,
+  symbolHints?: Record<string, RawSymbol[]>
 ): Promise<VibeLensProjectMaster> {
   if (!forceRescan) {
     const cached = await loadProjectMaster(projectId);
@@ -163,7 +213,9 @@ export async function analyzeProjectWithAI(
   if (onProgress) onProgress({ message: `Selecting core execution chain...`, percent: 20 });
 
   const targetFiles = selectCoreExecutionFiles(rawFiles);
-  const prompt = buildUnifiedPrompt(targetFiles, projectName);
+  // Feed the deterministic symbol/call IR for the target files so the AI
+  // describes real functions instead of guessing from raw dumps.
+  const prompt = buildUnifiedPrompt(targetFiles, projectName, symbolHints);
 
   if (onProgress) onProgress({ message: `OpenCode analyzing execution flow and code lines...`, percent: 50 });
 
@@ -173,16 +225,30 @@ export async function analyzeProjectWithAI(
   const parsed = extractJsonFromResponse<{
     stack?: string;
     summary?: string;
-    files?: VibeMasterFile[];
+    files?: Array<VibeMasterFile & { symbols?: Array<{ name: string; plainEnglish?: string; parametersPassed?: string; whyCalled?: string }> }>;
     connections?: VibeMasterConnection[];
     journeys?: VibeMasterJourney[];
     workspaces?: VibeMasterWorkspace[];
   }>(rawResponse);
 
   const fileMap: Record<string, VibeMasterFile> = {};
+  // AI per-symbol prose, keyed by file path + symbol name. Merged into the
+  // deterministic symbols by the enricher; unknown names are ignored there.
+  const symbolProse = new Map<string, { plainEnglish?: string; parametersPassed?: string; whyCalled?: string }>();
   if (parsed.files && Array.isArray(parsed.files)) {
     for (const f of parsed.files) {
       fileMap[f.path] = f;
+      if (Array.isArray((f as { symbols?: unknown }).symbols)) {
+        for (const s of (f as unknown as { symbols: Array<{ name: string; plainEnglish?: string; parametersPassed?: string; whyCalled?: string }> }).symbols) {
+          if (s && typeof s.name === 'string') {
+            symbolProse.set(`${f.path}::${s.name}`, {
+              plainEnglish: s.plainEnglish,
+              parametersPassed: s.parametersPassed,
+              whyCalled: s.whyCalled,
+            });
+          }
+        }
+      }
     }
   }
 
@@ -247,6 +313,10 @@ export async function analyzeProjectWithAI(
     analyzedAt: new Date().toISOString(),
     analyzer: 'opencode',
     files: fileMap,
+    // Carried alongside the master so the enricher can attach AI prose to the
+    // deterministic symbols. Stored under a non-schema key to keep the cached
+    // master shape stable.
+    symbolProse: Object.fromEntries(symbolProse),
     connections: Array.isArray(parsed.connections) ? parsed.connections : [],
     journeys: Array.isArray(parsed.journeys) ? parsed.journeys : [],
     workspaces: Array.isArray(parsed.workspaces) ? parsed.workspaces : [],

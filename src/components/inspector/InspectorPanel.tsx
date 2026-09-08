@@ -23,7 +23,12 @@ interface InspectorPanelProps {
   allFiles?: ParsedCodeFile[];
   connections?: CanvasEdge[];
   highlightLine?: number;
+  /** Selected canvas node id — function nodes look like `fileId::symbol` */
+  selectedNodeId?: string | null;
+  /** Resolved function symbol when a function node is selected */
+  symbol?: import('../../types/ast').ParsedSymbol | null;
   onSelectFile?: (fileId: string) => void;
+  onSelectNode?: (nodeId: string) => void;
   onClose: () => void;
   onOpenScreenLocator?: () => void;
 }
@@ -46,7 +51,10 @@ export function InspectorPanel({
   allFiles = [],
   connections = [],
   highlightLine,
+  selectedNodeId,
+  symbol,
   onSelectFile,
+  onSelectNode,
   onClose,
   onOpenScreenLocator,
 }: InspectorPanelProps) {
@@ -69,11 +77,20 @@ export function InspectorPanel({
   const role = file.pipelineRole || 'utility';
   const roleStyle = ROLE_LABELS[role] || ROLE_LABELS.utility;
 
-  // Resolve incoming and outgoing execution chain edges (exact id/path equality — no substrings)
-  const edgeTargetsFile = (ref: string) =>
-    ref === file.id || (!!file.path && ref === file.path);
-  const incoming = connections.filter((e) => edgeTargetsFile(e.to));
-  const outgoing = connections.filter((e) => edgeTargetsFile(e.from));
+  // Resolve incoming and outgoing execution chain edges (exact id/path equality — no substrings).
+  // When a function node is selected, match edges touching EITHER the function
+  // id or the parent file id, so intra-file call edges appear alongside file edges.
+  const selfRefs = new Set<string>([file.id, file.path].filter(Boolean) as string[]);
+  if (symbol) selfRefs.add(symbol.id);
+  const incoming = connections.filter((e) => selfRefs.has(e.to));
+  const outgoing = connections.filter((e) => selfRefs.has(e.from));
+
+  const resolveNodeTarget = (edgeRef: string): string | undefined => {
+    // intra-file function edge endpoint?
+    if (edgeRef.includes('::')) return edgeRef;
+    const f = allFiles.find((x) => x.id === edgeRef || x.path === edgeRef);
+    return f?.id;
+  };
 
   const handleAskQuickAi = (q: string) => {
     if (!q.trim()) return;
@@ -165,16 +182,51 @@ export function InspectorPanel({
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'details' ? (
           <div className="p-4 space-y-4">
-            {/* Overview Box */}
+            {/* Overview Box — function-aware: symbol prose wins when present */}
             <div className="bg-[#101217] border border-[#23252a] rounded-xl p-3.5 space-y-1.5">
               <div className="flex items-center gap-1.5 text-xs font-mono text-[#828fff] uppercase font-semibold">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Node Role & Responsibility</span>
+                <span>{symbol ? `Function · ${symbol.name}` : 'Node Role & Responsibility'}</span>
               </div>
+              {symbol && (
+                <p className="text-[10px] font-mono text-[#62666d]">
+                  {symbol.signature} · lines {symbol.startLine}–{symbol.endLine}
+                  {symbol.confidence === 'low' ? ' · approximate parse' : ''}
+                </p>
+              )}
               <p className="text-xs text-[#f7f8f8] leading-relaxed font-sans">
-                {file.description || `${file.name} coordinates active pipeline operations in this architecture.`}
+                {symbol?.plainEnglish || file.description || `${file.name} coordinates active pipeline operations in this architecture.`}
               </p>
+              {symbol && symbol.params.length > 0 && (
+                <p className="text-[11px] font-mono text-[#8a8f98]">
+                  Params: <span className="text-[#d0d6e0]">{symbol.params.join(', ')}</span>
+                </p>
+              )}
             </div>
+
+            {/* Sibling functions in the same file — jump within the file */}
+            {symbol && (file.functions?.length ?? 0) > 1 && (
+              <div className="bg-[#0e1015] border border-[#23252a] rounded-xl p-3 space-y-2">
+                <span className="text-[10px] font-mono text-[#8a8f98] uppercase tracking-wider font-semibold block">
+                  Also in {file.name} ({file.functions!.length})
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {file.functions!.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => onSelectNode && onSelectNode(s.id)}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-mono border transition-colors cursor-pointer ${
+                        s.id === symbol.id
+                          ? 'bg-[#5e6ad2]/20 text-white border-[#5e6ad2]/50'
+                          : 'bg-[#16171d] text-[#8a8f98] border-[#23252a] hover:text-white hover:border-[#383a42]'
+                      }`}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* NODE-TO-NODE CAUSALITY CHAIN (Answers what happens from node to node!) */}
             <div className="bg-[#090a0e] border border-[#23252a] rounded-xl p-3.5 space-y-3 shadow-inner">
@@ -195,16 +247,20 @@ export function InspectorPanel({
                 </span>
                 {incoming.length > 0 ? (
                   incoming.map((e) => {
-                    const srcFile = allFiles.find((f) => f.id === e.from || f.path === e.from);
+                    const target = resolveNodeTarget(e.from);
                     return (
                       <div
                         key={e.id}
-                        onClick={() => onSelectFile && onSelectFile(srcFile?.id || e.from)}
+                        onClick={() => {
+                          if (!target) return;
+                          if (target.includes('::')) onSelectNode && onSelectNode(target);
+                          else onSelectFile && onSelectFile(target);
+                        }}
                         className="p-2.5 rounded-lg bg-[#111218] border border-[#23252a] hover:border-[#38bdf8]/50 transition-colors cursor-pointer space-y-1 group"
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-semibold text-[#f7f8f8] group-hover:text-[#38bdf8] transition-colors flex items-center gap-1">
-                            <span>⬅️ {e.fromName || srcFile?.name || e.from}</span>
+                            <span>⬅️ {e.fromName || e.from}</span>
                             <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </span>
                           <span className="text-[9px] font-mono text-[#38bdf8] bg-[#0284c7]/15 px-1.5 py-0.2 rounded">
@@ -256,16 +312,20 @@ export function InspectorPanel({
                 </span>
                 {outgoing.length > 0 ? (
                   outgoing.map((e) => {
-                    const tgtFile = allFiles.find((f) => f.id === e.to || f.path === e.to);
+                    const target = resolveNodeTarget(e.to);
                     return (
                       <div
                         key={e.id}
-                        onClick={() => onSelectFile && onSelectFile(tgtFile?.id || e.to)}
+                        onClick={() => {
+                          if (!target) return;
+                          if (target.includes('::')) onSelectNode && onSelectNode(target);
+                          else onSelectFile && onSelectFile(target);
+                        }}
                         className="p-2.5 rounded-lg bg-[#111218] border border-[#23252a] hover:border-[#34d399]/50 transition-colors cursor-pointer space-y-1 group"
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-mono font-semibold text-[#f7f8f8] group-hover:text-[#34d399] transition-colors flex items-center gap-1">
-                            <span>➡️ {e.toName || tgtFile?.name || e.to}</span>
+                            <span>➡️ {e.toName || e.to}</span>
                             <ExternalLink className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </span>
                           <span className="text-[9px] font-mono text-[#34d399] bg-[#059669]/15 px-1.5 py-0.2 rounded">
@@ -307,16 +367,18 @@ export function InspectorPanel({
               </div>
             </div>
 
-            {/* Focal Code Snippet View */}
+            {/* Focal Code Snippet View — function body when a symbol is selected */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs font-mono text-[#8a8f98]">
                 <span className="flex items-center gap-1 text-[#d0d6e0] font-semibold">
                   <Code2 className="w-3.5 h-3.5 text-[#5e6ad2]" />
                   <span>Focal Code Execution</span>
                 </span>
-                <span className="text-[10px] text-[#62666d]">Line {highlightLine || file.focalLine || 1}</span>
+                <span className="text-[10px] text-[#62666d]">
+                  Line {symbol ? symbol.startLine : highlightLine || file.focalLine || 1}
+                </span>
               </div>
-              <CodeSnippetView file={file} highlightLine={highlightLine} />
+              <CodeSnippetView file={file} highlightLine={highlightLine} symbol={symbol ?? null} />
             </div>
 
             {/* Data Shape & State Variables */}

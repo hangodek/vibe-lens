@@ -27,12 +27,15 @@ export function App() {
     activeWorkspaceId,
     selectedFile,
     selectedFileId,
+    selectedNodeId,
+    selectedSymbol,
     layerMode,
     viewScope,
     nodes,
     edges,
     setActiveWorkspaceId,
     setSelectedFileId,
+    selectNode,
     setLayerMode,
     setViewScope,
     switchProject,
@@ -71,9 +74,9 @@ export function App() {
   // When trace step changes, automatically focus the active file in inspector
   useEffect(() => {
     if (layerMode === 'trace' && trace.currentStep?.activeNodeId) {
-      setSelectedFileId(trace.currentStep.activeNodeId);
+      selectNode(trace.currentStep.activeNodeId);
     }
-  }, [layerMode, trace.currentStep, setSelectedFileId]);
+  }, [layerMode, trace.currentStep, selectNode]);
 
   // AI Pipeline Runner — guarded against stale completions from earlier ingests
   const analysisRunId = useRef(0);
@@ -90,6 +93,28 @@ export function App() {
         lineCount: f.lineCount,
       }));
 
+      // Deterministic symbol IR travels with the files so the AI describes
+      // real parsed functions (never invented ones).
+      const symbolHints: Record<string, Array<{
+        name: string; signature: string; params: string[];
+        startLine: number; endLine: number;
+        calls: Array<{ name: string; args: string; line: number }>;
+        calledBy: string[];
+      }>> = {};
+      for (const f of project.files) {
+        if (f.functions && f.functions.length > 0) {
+          symbolHints[f.path] = f.functions.map((s) => ({
+            name: s.name,
+            signature: s.signature,
+            params: s.params,
+            startLine: s.startLine,
+            endLine: s.endLine,
+            calls: s.calls.map((c) => ({ name: c.baseName, args: c.args, line: c.line })),
+            calledBy: s.calledBy,
+          }));
+        }
+      }
+
       const master = await analyzeProjectWithAI(
         project.id,
         project.name,
@@ -97,7 +122,8 @@ export function App() {
         (p) => {
           if (analysisRunId.current === runId) setAnalysisProgress(p);
         },
-        force
+        force,
+        symbolHints
       );
 
       if (analysisRunId.current !== runId) return;
@@ -140,7 +166,7 @@ export function App() {
         onOpenApiKey={() => setIsAISetupOpen(true)}
         onRescanAI={() => runAIAnalysis(activeProject, true)}
         onSelectFile={(id) => {
-          setSelectedFileId(id);
+          selectNode(id);
           setIsInspectorOpen(true);
         }}
       />
@@ -158,7 +184,7 @@ export function App() {
             files={displayedFiles}
             selectedFileId={selectedFileId}
             onSelectFile={(id) => {
-              setSelectedFileId(id);
+              selectNode(id);
               setIsInspectorOpen(true);
             }}
           />
@@ -194,10 +220,12 @@ export function App() {
               nodes={nodes}
               edges={edges}
               selectedFileId={selectedFileId}
+              selectedNodeId={selectedNodeId}
+              focusNodeId={selectedNodeId}
               activeTraceStepNodeId={layerMode === 'trace' ? trace.currentStep?.activeNodeId : undefined}
               scopeKey={`${activeProject.id}-${layerMode}-${activeWorkspaceId}-${viewScope}`}
-              onSelectNode={(fileId) => {
-                setSelectedFileId(fileId);
+              onSelectNode={(nodeId) => {
+                selectNode(nodeId);
                 setIsInspectorOpen(true);
               }}
             />
@@ -211,8 +239,14 @@ export function App() {
             allFiles={allFiles}
             connections={edges}
             highlightLine={layerMode === 'trace' ? trace.currentStep?.lineHighlight : undefined}
+            selectedNodeId={selectedNodeId}
+            symbol={selectedSymbol?.symbol ?? null}
             onSelectFile={(id) => {
-              setSelectedFileId(id);
+              selectNode(id);
+              setIsInspectorOpen(true);
+            }}
+            onSelectNode={(id) => {
+              selectNode(id);
               setIsInspectorOpen(true);
             }}
             onClose={() => setIsInspectorOpen(false)}

@@ -11,6 +11,9 @@ export function useCodebase() {
   const [selectedFileId, setSelectedFileId] = useState<string | null>(
     PRESET_PROJECTS[0].files[0]?.id || null
   );
+  // Function-level selection: CanvasNode.id (fileId::symbol) when a function
+  // node is clicked, otherwise the file id. Inspector derives file + symbol.
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [layerMode, setLayerMode] = useState<LayerMode>('trace');
   const [viewScope, setViewScope] = useState<'core' | 'all'>('core');
   const [activeTraceIndex, setActiveTraceIndex] = useState(0);
@@ -82,10 +85,22 @@ export function useCodebase() {
     return allFiles.find((f) => f.id === selectedFileId) || allFiles[0] || null;
   }, [allFiles, selectedFileId]);
 
+  // Resolve the selected canvas node to its file + optional function symbol.
+  // Falls back to the selected file when the id is a plain file id.
+  const selectedSymbol = useMemo(() => {
+    if (!selectedNodeId || !selectedNodeId.includes('::')) return null;
+    const sep = selectedNodeId.indexOf('::');
+    const fileId = selectedNodeId.slice(0, sep);
+    const file = allFiles.find((f) => f.id === fileId);
+    const sym = file?.functions?.find((s) => s.id === selectedNodeId);
+    return sym ? { file, symbol: sym } : null;
+  }, [allFiles, selectedNodeId]);
+
   const switchProject = (project: VibeProject) => {
     setActiveProject(project);
     setCustomFiles([]);
     setSelectedFileId(project.files[0]?.id || null);
+    setSelectedNodeId(null);
     setActiveTraceIndex(0);
     setActiveTraceId(project.traces?.[0]?.id || '');
   };
@@ -95,6 +110,7 @@ export function useCodebase() {
     setActiveProject(project);
     setCustomFiles([]);
     setSelectedFileId(project.files[0]?.id || null);
+    setSelectedNodeId(null);
     setActiveTraceIndex(0);
     setActiveTraceId(project.traces?.[0]?.id || '');
   };
@@ -102,6 +118,16 @@ export function useCodebase() {
   const addCustomFile = (newFile: ParsedCodeFile) => {
     setCustomFiles((prev) => [newFile, ...prev]);
     setSelectedFileId(newFile.id);
+    setSelectedNodeId(null);
+  };
+
+  /** Select a canvas node: function nodes carry `fileId::symbol`, file nodes carry the file id. */
+  const selectNode = (nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    const fileId = nodeId.includes('::') ? nodeId.slice(0, nodeId.indexOf('::')) : nodeId;
+    if (allFiles.some((f) => f.id === fileId)) {
+      setSelectedFileId(fileId);
+    }
   };
 
   const projectTraces = activeProject.traces ?? [];
@@ -133,12 +159,15 @@ export function useCodebase() {
     activeWorkspaceId,
     selectedFile,
     selectedFileId,
+    selectedNodeId,
+    selectedSymbol,
     layerMode,
     viewScope,
     nodes,
     edges,
     setActiveWorkspaceId,
     setSelectedFileId,
+    selectNode,
     setLayerMode,
     setViewScope,
     switchProject,

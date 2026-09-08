@@ -95,7 +95,10 @@ function GraphNodeComponent({
   const inText = formatFlowFootprint(node.inbound, 'Caller');
   const outText = formatFlowFootprint(node.outbound, 'Return');
 
-  const IconComponent = roleKey === 'view' ? Globe : roleKey === 'storage' ? Database : roleKey === 'guard' ? ShieldAlert : roleKey === 'controller' ? Route : roleKey === 'service' ? Cpu : Boxes;
+  const isFunctionNode = node.id.includes('::');
+  const fnName = isFunctionNode ? node.name : null;
+
+  const IconComponent = isFunctionNode ? Cpu : roleKey === 'view' ? Globe : roleKey === 'storage' ? Database : roleKey === 'guard' ? ShieldAlert : roleKey === 'controller' ? Route : roleKey === 'service' ? Cpu : Boxes;
 
   const riskBadge = node.riskScore === 'high' ? (
     <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-[#ef4444]/15 text-[#f87171] border border-[#ef4444]/30 font-medium">
@@ -117,6 +120,7 @@ function GraphNodeComponent({
 
   return (
     <div
+      data-node-id={node.id}
       className={`canvas-node absolute rounded-xl border transition-all duration-150 cursor-pointer select-none bg-[#090a0d] shadow-lg overflow-hidden flex flex-col justify-between ${
         isSelected
           ? 'border-[#5e6ad2] shadow-[0_0_24px_rgba(94,106,210,0.4)] ring-1 ring-[#5e6ad2]'
@@ -132,7 +136,7 @@ function GraphNodeComponent({
         textRendering: 'geometricPrecision',
         WebkitFontSmoothing: 'antialiased',
       }}
-      onClick={() => onSelect(node.fileId)}
+      onClick={() => onSelect(node.id)}
     >
       {/* 1. Header: Drag Handle, Role Badge & Safety Risk */}
       <div className="h-[34px] px-3 py-1.5 border-b border-[#23252a]/70 bg-[#0e0f14] flex items-center justify-between shrink-0">
@@ -144,16 +148,30 @@ function GraphNodeComponent({
           >
             <GripVertical className="w-3.5 h-3.5" />
           </div>
-          <span
-            className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-md font-semibold truncate border"
-            style={{
-              backgroundColor: roleStyle.badgeBg,
-              color: roleStyle.badgeColor,
-              borderColor: roleStyle.border,
-            }}
-          >
-            {roleStyle.label}
-          </span>
+          {isFunctionNode ? (
+            <span
+              className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-md font-semibold truncate border"
+              style={{
+                backgroundColor: '#22d3ee22',
+                color: '#22d3ee',
+                borderColor: '#22d3ee55',
+              }}
+              title={node.signature || node.name}
+            >
+              FN · {(node.symbolKind || 'function').toUpperCase()}
+            </span>
+          ) : (
+            <span
+              className="text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-md font-semibold truncate border"
+              style={{
+                backgroundColor: roleStyle.badgeBg,
+                color: roleStyle.badgeColor,
+                borderColor: roleStyle.border,
+              }}
+            >
+              {roleStyle.label}
+            </span>
+          )}
         </div>
 
         {riskBadge}
@@ -164,8 +182,11 @@ function GraphNodeComponent({
         <div>
           <div className="flex items-center gap-2 mb-1">
             <IconComponent className="w-4 h-4 shrink-0" style={{ color: roleStyle.iconColor }} />
-            <h4 className="text-xs font-semibold text-[#f7f8f8] truncate tracking-tight font-mono">
+            <h4 className="text-xs font-semibold text-[#f7f8f8] truncate tracking-tight font-mono" title={isFunctionNode ? `${node.path} › ${node.name}` : node.path}>
               {node.name}
+              {fnName && node.path ? (
+                <span className="text-[10px] font-normal text-[#62666d]"> · {node.path.split('/').pop()}</span>
+              ) : null}
             </h4>
           </div>
 
@@ -175,22 +196,35 @@ function GraphNodeComponent({
           </p>
         </div>
 
-        {/* Consistent Standardized Action / Method Pill */}
+        {/* Consistent Standardized Action / Method Pill (function signature for FN nodes) */}
         <div className="bg-[#101217] border border-[#23252a] rounded px-2 py-1 flex items-center gap-1.5 text-[10px] font-mono truncate shrink-0">
-          <span
-            className={`px-1.5 py-0.2 rounded text-[9px] font-bold tracking-wider uppercase border shrink-0 ${
-              action.isPost
-                ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                : action.isSql
-                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                : action.isGuard
-                ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                : 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30'
-            }`}
-          >
-            {action.method}
-          </span>
-          <span className="truncate text-[#f7f8f8] font-medium">{action.target}</span>
+          {isFunctionNode ? (
+            <>
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold tracking-wider uppercase border shrink-0 bg-cyan-500/15 text-cyan-400 border-cyan-500/30">
+                FN
+              </span>
+              <span className="truncate text-[#f7f8f8] font-medium" title={node.signature}>
+                {node.signature || node.name}
+              </span>
+            </>
+          ) : (
+            <>
+              <span
+                className={`px-1.5 py-0.2 rounded text-[9px] font-bold tracking-wider uppercase border shrink-0 ${
+                  action.isPost
+                    ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                    : action.isSql
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : action.isGuard
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30'
+                }`}
+              >
+                {action.method}
+              </span>
+              <span className="truncate text-[#f7f8f8] font-medium">{action.target}</span>
+            </>
+          )}
         </div>
       </div>
 

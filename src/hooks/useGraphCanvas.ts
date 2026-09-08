@@ -11,6 +11,14 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const focusAnimRef = useRef<number | null>(null);
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+
+  const cancelFocus = useCallback(() => {
+    if (focusAnimRef.current) cancelAnimationFrame(focusAnimRef.current);
+    focusAnimRef.current = null;
+  }, []);
 
   // Auto-fit / Frame All camera with active pipeline prioritization
   const autoFit = useCallback(() => {
@@ -84,6 +92,8 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     const handleNativeWheel = (e: globalThis.WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (focusAnimRef.current) cancelAnimationFrame(focusAnimRef.current);
+      focusAnimRef.current = null;
 
       const rect = el.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
@@ -117,9 +127,10 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     const target = e.target as HTMLElement;
     // Don't start panning from nodes or interactive UI chrome (toolbar, zoom controls, drawers)
     if (target.closest('.canvas-node, button, input, select, textarea, a')) return;
+    cancelFocus();
     setIsPanning(true);
     setPanStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
-  }, [viewport.x, viewport.y]);
+  }, [viewport.x, viewport.y, cancelFocus]);
 
   const handleMouseMove = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (draggingNodeId) {
@@ -174,8 +185,71 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
   const zoomOut = () => setViewport((v) => ({ ...v, zoom: Math.max(v.zoom - 0.15, 0.2) }));
   const resetView = () => setViewport({ x: 60, y: 50, zoom: 0.85 });
 
+  /**
+   * Fly the camera to center a node. Resolves exact node id first, then falls
+   * back to the first node of a matching file (trace steps are file-keyed).
+   * Skips when the node is already near the viewport center. Manual pan, wheel
+   * zoom, or drag cancels an in-flight animation. Honors reduced-motion.
+   */
+  const focusNode = useCallback((nodeId: string) => {
+    const el = canvasRef.current;
+    if (!el || !nodeId) return;
+    const n =
+      initialNodes.find((x) => x.id === nodeId) ??
+      initialNodes.find((x) => x.fileId === nodeId);
+    if (!n) return;
+    const pos = nodePositions[n.id] ?? { x: n.x, y: n.y };
+    const rect = el.getBoundingClientRect();
+    const width = rect.width || 1200;
+    const height = rect.height || 800;
+
+    const from = viewportRef.current;
+    const targetZoom = Math.min(Math.max(from.zoom < 0.85 ? 1.0 : from.zoom, 0.2), 2.5);
+    const to = {
+      x: Math.round(width / 2 - (pos.x + n.width / 2) * targetZoom),
+      y: Math.round(height / 2 - (pos.y + n.height / 2) * targetZoom),
+      zoom: targetZoom,
+    };
+
+    // Already there? Don't animate.
+    const nodeScreenX = pos.x * from.zoom + from.x + (n.width / 2) * from.zoom;
+    const nodeScreenY = pos.y * from.zoom + from.y + (n.height / 2) * from.zoom;
+    if (
+      Math.abs(nodeScreenX - width / 2) < width * 0.3 &&
+      Math.abs(nodeScreenY - height / 2) < height * 0.3 &&
+      Math.abs(from.zoom - targetZoom) < 0.01
+    ) {
+      return;
+    }
+
+    if (focusAnimRef.current) cancelAnimationFrame(focusAnimRef.current);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      setViewport(to);
+      return;
+    }
+    const start = { x: from.x, y: from.y, zoom: from.zoom };
+    const t0 = performance.now();
+    const DURATION = 250;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - t0) / DURATION);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setViewport({
+        x: Math.round(start.x + (to.x - start.x) * eased),
+        y: Math.round(start.y + (to.y - start.y) * eased),
+        zoom: Number((start.zoom + (to.zoom - start.zoom) * eased).toFixed(3)),
+      });
+      if (t < 1) {
+        focusAnimRef.current = requestAnimationFrame(step);
+      } else {
+        focusAnimRef.current = null;
+      }
+    };
+    focusAnimRef.current = requestAnimationFrame(step);
+  }, [initialNodes, nodePositions]);
+
   const startNodeDrag = (nodeId: string, e: MouseEvent, currentX: number, currentY: number) => {
     e.stopPropagation();
+    cancelFocus();
     setDraggingNodeId(nodeId);
     const canvasX = (e.clientX - viewport.x) / viewport.zoom;
     const canvasY = (e.clientY - viewport.y) / viewport.zoom;
@@ -201,6 +275,7 @@ export function useGraphCanvas(initialNodes: CanvasNode[], scopeKey: string = ''
     zoomOut,
     resetView,
     autoFit,
+    focusNode,
     startNodeDrag,
     activeNodes,
   };

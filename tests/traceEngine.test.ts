@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import { calculateLayout } from '../src/utils/traceEngine';
 import { parseSourceCode } from '../src/utils/astParser';
+import { computeEdgePillGeometry } from '../src/components/canvas/ConnectionEdge';
 
 describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
   it('guarantees zero bounding box collisions across feature nodes', () => {
@@ -115,6 +116,39 @@ describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
     expect(edges[0].codeSnippet).toContain('HandleFunc');
   });
 
+  it('fans out function nodes with intra-file call edges (single-file project)', () => {
+    const files = [
+      parseSourceCode(
+        'static/app.js',
+        `function handleNoteOn(noteName) {
+  playNoteSound(noteName);
+}
+function playNoteSound(noteName) {
+  initAudioContext();
+}
+function initAudioContext() {
+}`
+      ),
+    ];
+
+    const { nodes, edges } = calculateLayout(files, 'screen', undefined, 0, []);
+
+    // One node per function, not one node for the file
+    expect(nodes.length).toBe(3);
+    expect(nodes.every((n) => n.id.includes('::'))).toBe(true);
+    const ids = new Set(nodes.map((n) => n.id));
+    const edgeKeys = new Set(edges.map((e) => `${e.from}->${e.to}`));
+    const onId = [...ids].find((id) => id.endsWith('::handleNoteOn'))!;
+    const soundId = [...ids].find((id) => id.endsWith('::playNoteSound'))!;
+    const ctxId = [...ids].find((id) => id.endsWith('::initAudioContext'))!;
+    expect(edgeKeys.has(`${onId}->${soundId}`)).toBe(true);
+    expect(edgeKeys.has(`${soundId}->${ctxId}`)).toBe(true);
+    // Intra-file edges carry caller/target + line provenance
+    const edge = edges.find((e) => e.from === onId)!;
+    expect(edge.callerFunction).toBe('handleNoteOn');
+    expect(edge.targetFunction).toBe('playNoteSound');
+  });
+
   it('merges AI edges with heuristic gap-filling instead of leaving files edgeless', () => {
     const files = [
       parseSourceCode('web/templates/auth/login.html', '<form action="/login">'),
@@ -134,25 +168,24 @@ describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
     ];
 
     const { edges } = calculateLayout(files, 'screen', undefined, 0, aiConnections);
-    const keyed = new Set(edges.map((e) => `${e.from}->${e.to}`));
-    const login = files[0].id;
-    const guard = files[1].id;
-    const handler = files[2].id;
-    const service = files[3].id;
+    // Edges land on function endpoints (fileId::symbol); assert by names.
+    const named = new Set(edges.map((e) => `${e.fromName}->${e.toName}`));
 
     // AI pair preserved …
-    expect(keyed.has(`${guard}->${handler}`)).toBe(true);
+    expect([...named].some((k) => k.startsWith('RequireAuth') && k.endsWith('Login'))).toBe(true);
     // … heuristic gap-fills View -> Guard and Controller -> Service …
-    expect(keyed.has(`${login}->${guard}`)).toBe(true);
-    expect(keyed.has(`${handler}->${service}`)).toBe(true);
+    expect([...named].some((k) => k.startsWith('login.html') && k.includes('RequireAuth'))).toBe(true);
+    expect([...named].some((k) => k.startsWith('Login') && k.endsWith('Authenticate'))).toBe(true);
     // … and does NOT add a duplicate View -> Controller bypass over the guard path.
-    expect(keyed.has(`${login}->${handler}`)).toBe(false);
+    expect([...named].some((k) => k.startsWith('login.html') && k.endsWith('Login'))).toBe(false);
 
-    // Every non-gateway node has at least one incoming edge (nobody sits edgeless).
-    const targets = new Set(edges.map((e) => e.to));
-    expect(targets.has(guard)).toBe(true);
-    expect(targets.has(handler)).toBe(true);
-    expect(targets.has(service)).toBe(true);
+    // Every non-gateway file has at least one incoming edge (nobody sits edgeless).
+    const targetFiles = new Set(
+      edges.map((e) => (e.to.includes('::') ? e.to.slice(0, e.to.indexOf('::')) : e.to))
+    );
+    expect(targetFiles.has(files[1].id)).toBe(true);
+    expect(targetFiles.has(files[2].id)).toBe(true);
+    expect(targetFiles.has(files[3].id)).toBe(true);
   });
 
   it('aligns all trace steps horizontally on a clean baseline with wide spacing', () => {
@@ -239,24 +272,132 @@ describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
 
     const { edges } = calculateLayout(files, 'screen', undefined, 0, []);
 
+    // Edges now land on function endpoints; assert by endpoint name + role chain.
     const viewToGuard = edges.filter(
-      (e) =>
-        (e.from === files[0].id && e.to === files[1].id) ||
-        (e.fromName === 'login.html' && e.toName === 'auth.go')
+      (e) => e.fromName === 'login.html' && e.toName === 'RequireAuth'
     );
     const guardToController = edges.filter(
-      (e) =>
-        (e.from === files[1].id && e.to === files[2].id) ||
-        (e.fromName === 'auth.go' && e.toName === 'handler.go')
+      (e) => e.fromName === 'RequireAuth' && e.toName === 'Login'
     );
     const directBypass = edges.filter(
-      (e) =>
-        (e.from === files[0].id && e.to === files[2].id) ||
-        (e.fromName === 'login.html' && e.toName === 'handler.go')
+      (e) => e.fromName === 'login.html' && e.toName === 'Login'
     );
 
     expect(viewToGuard.length).toBeGreaterThanOrEqual(1);
     expect(guardToController.length).toBeGreaterThanOrEqual(1);
     expect(directBypass.length).toBe(0);
+  });
+
+  it('function nodes carry FN badge data (kind + signature), not the file role', () => {
+    const files = [
+      parseSourceCode(
+        'static/app.js',
+        `function handleNoteOn(noteName) {\n  playNoteSound(noteName);\n}\nfunction playNoteSound(noteName) {\n}`
+      ),
+    ];
+
+    const { nodes } = calculateLayout(files, 'screen', undefined, 0, []);
+
+    // Fan-out: one node per function
+    expect(nodes.length).toBe(2);
+    for (const n of nodes) {
+      expect(n.id).toContain('::');
+      expect(n.signature).toBeDefined();
+    }
+    const on = nodes.find((n) => n.name === 'handleNoteOn')!;
+    expect(on.signature).toContain('handleNoteOn(noteName)');
+  });
+
+  it('same-column edges route vertically with pills clear of cards and each other', () => {
+    const files = [
+      parseSourceCode(
+        'static/app.js',
+        `function a() {\n  b();\n  c();\n}\nfunction b() {\n}\nfunction c() {\n}`
+      ),
+    ];
+
+    const { nodes, edges } = calculateLayout(files, 'screen', undefined, 0, []);
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const intra = edges.filter((e) => {
+      const f = nodeById.get(e.from)!;
+      const t = nodeById.get(e.to)!;
+      return Math.abs(f.x - t.x) < 40;
+    });
+    expect(intra.length).toBeGreaterThanOrEqual(2);
+
+    // Replicate the GraphCanvas pill pipeline (geometry + relaxation)
+    const outM = new Map<string, string[]>();
+    const inM = new Map<string, string[]>();
+    for (const e of edges) {
+      if (!outM.has(e.from)) outM.set(e.from, []);
+      outM.get(e.from)!.push(e.id);
+      if (!inM.has(e.to)) inM.set(e.to, []);
+      inM.get(e.to)!.push(e.id);
+    }
+    const pos: Record<string, { x: number; y: number; width: number; height: number }> = {};
+    for (const e of edges) {
+      const f = nodeById.get(e.from)!;
+      const t = nodeById.get(e.to)!;
+      const fe = outM.get(e.from) ?? [e.id];
+      const te = inM.get(e.to) ?? [e.id];
+      pos[e.id] = computeEdgePillGeometry(e, f, t, fe.indexOf(e.id), fe.length, te.indexOf(e.id), te.length);
+    }
+    const isVert = (id: string) => {
+      const e = edges.find((x) => x.id === id)!;
+      return Math.abs(nodeById.get(e.from)!.x - nodeById.get(e.to)!.x) < 40;
+    };
+    const list = edges.filter((e) => pos[e.id]);
+    for (let pass = 0; pass < 6; pass++) {
+      for (let i = 0; i < list.length; i++) {
+        for (let j = i + 1; j < list.length; j++) {
+          const p1 = pos[list[i].id];
+          const p2 = pos[list[j].id];
+          const dx = Math.abs(p1.x - p2.x);
+          const dy = Math.abs(p1.y - p2.y);
+          if (dx < (p1.width + p2.width) / 2 + 14 && dy < 28) {
+            if (isVert(list[i].id) && isVert(list[j].id)) {
+              const push = ((p1.width + p2.width) / 2 + 14 - dx) / 2 + 2;
+              if (p1.x <= p2.x) {
+                p1.x = Math.max(p1.width / 2 + 4, p1.x - push);
+                p2.x += push;
+              } else {
+                p1.x += push;
+                p2.x = Math.max(p2.width / 2 + 4, p2.x - push);
+              }
+            } else {
+              const push = (28 - dy) / 2 + 2;
+              if (p1.y <= p2.y) {
+                p1.y -= push;
+                p2.y += push;
+              } else {
+                p1.y += push;
+                p2.y -= push;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // No pill may sit on top of a card
+    for (const e of list) {
+      const p = pos[e.id];
+      for (const n of nodes) {
+        const ox = Math.max(0, Math.min(p.x + p.width / 2, n.x + n.width) - Math.max(p.x - p.width / 2, n.x));
+        const oy = Math.max(0, Math.min(p.y + 13, n.y + n.height) - Math.max(p.y - 13, n.y));
+        expect(ox <= 4 || oy <= 4).toBe(true);
+      }
+    }
+    // No two pills may overlap each other
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = pos[list[i].id];
+        const b = pos[list[j].id];
+        const separated =
+          Math.abs(a.x - b.x) >= (a.width + b.width) / 2 + 6 ||
+          Math.abs(a.y - b.y) >= 26;
+        expect(separated).toBe(true);
+      }
+    }
   });
 });

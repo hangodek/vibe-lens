@@ -17,9 +17,33 @@ export function enrichProjectWithMaster(
   const resolveFileId = (p: string): string | undefined =>
     pathToIdMap.get(p) ?? pathToIdMap.get(normalizePath(p));
 
+  const proseBySymbol = master.symbolProse ?? {};
+
   const enrichedFiles: ParsedCodeFile[] = project.files.map((file) => {
     const masterFile = master.files[file.path];
-    if (!masterFile) return file;
+    // Attach AI prose ONLY to deterministic symbols that actually exist.
+    // AI-invented names are dropped with a warning — topology stays parsed, not guessed.
+    const functions = (file.functions ?? []).map((sym) => {
+      const prose = proseBySymbol[`${file.path}::${sym.name}`];
+      if (!prose) return sym;
+      return {
+        ...sym,
+        plainEnglish: prose.plainEnglish || sym.plainEnglish,
+        whyCalled: prose.whyCalled || sym.whyCalled,
+      };
+    });
+    for (const key of Object.keys(proseBySymbol)) {
+      const sep = key.lastIndexOf('::');
+      if (sep > 0 && key.slice(0, sep) === file.path) {
+        const name = key.slice(sep + 2);
+        if (!(file.functions ?? []).some((s) => s.name === name)) {
+          console.warn(`[projectEnricher] AI described unknown symbol "${name}" in ${file.path} — dropped`);
+        }
+      }
+    }
+    if (!masterFile) {
+      return functions === file.functions ? file : { ...file, functions };
+    }
 
     // Convert dataShape (structs, classes, states) into StateVariables for Universal Data Shape panel
     const states: StateVariable[] = [];
@@ -41,6 +65,7 @@ export function enrichProjectWithMaster(
 
     return {
       ...file,
+      functions,
       pipelineRole: masterFile.role || file.pipelineRole,
       description: masterFile.plainEnglish || file.description,
       whyAiMadeThis: masterFile.outbound || file.whyAiMadeThis,

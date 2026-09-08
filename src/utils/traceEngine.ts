@@ -131,6 +131,12 @@ export function calculateLayout(
   // Stage 2: HTTP Controllers & Request Handlers
   // Stage 3: Business Services & Logic
   // Stage 4: Repositories & Database Storage (Right)
+  //
+  // FUNCTION FAN-OUT: files that carry function-level symbols expand into one
+  // node per symbol (id = fileId::name). Files without symbols keep a single
+  // fallback node. Intra-file call edges come from the deterministic call graph.
+  const FN_NODE_WIDTH = 250;
+  const FN_NODE_HEIGHT = 120;
   const columns: ParsedCodeFile[][] = [[], [], [], [], []];
 
   files.forEach((f) => {
@@ -148,41 +154,164 @@ export function calculateLayout(
     }
   });
 
+  // Order symbols for stable layout: entrypoints first, then by start line
+  const orderSymbols = (f: ParsedCodeFile) =>
+    [...(f.functions ?? [])].sort((a, b) => {
+      const rank = (k: string) => (k === 'entrypoint' ? 0 : k === 'route' ? 1 : k === 'listener' ? 2 : 3);
+      return rank(a.kind) - rank(b.kind) || a.startLine - b.startLine;
+    });
+
+  const pushFunctionNode = (
+    file: ParsedCodeFile,
+    fn: NonNullable<ParsedCodeFile['functions']>[number],
+    x: number,
+    y: number
+  ) => {
+    const callNames = fn.calls.map((c) => c.baseName).filter((n, i, arr) => arr.indexOf(n) === i);
+    nodes.push({
+      id: fn.id,
+      fileId: file.id,
+      name: fn.name,
+      path: file.path,
+      type: file.type,
+      role: file.pipelineRole,
+      signature: fn.signature,
+      symbolKind: fn.kind,
+      plainEnglish: fn.plainEnglish || `${fn.name} in ${file.name}`,
+      focalCode: fn.body,
+      focalLine: fn.startLine,
+      inbound: fn.calledBy.length > 0 ? `Called by ${fn.calledBy.slice(0, 3).join(', ')}` : file.flowExplanation?.inbound,
+      outbound: callNames.length > 0 ? `Calls ${callNames.slice(0, 3).join(', ')}` : file.flowExplanation?.outbound,
+      routes: file.routes,
+      dataEntities: file.dataEntities,
+      x,
+      y,
+      width: FN_NODE_WIDTH,
+      height: FN_NODE_HEIGHT,
+      label: `${file.name} › ${fn.name}`,
+      badge: `${fn.kind} · L${fn.startLine}`,
+      stateCount: 0,
+      hookCount: fn.calls.length,
+      apiCount: 0,
+      previewType: file.previewType,
+      riskScore: file.blastRadius?.score,
+    });
+  };
+
   columns.forEach((colFiles, colIdx) => {
     const colX = 80 + colIdx * (NODE_WIDTH + GAP_X);
-    colFiles.forEach((file, rowIdx) => {
-      const nodeY = 90 + rowIdx * (NODE_HEIGHT + GAP_Y);
-
-      nodes.push({
-        id: file.id,
-        fileId: file.id,
-        name: file.name,
-        path: file.path,
-        type: file.type,
-        role: file.pipelineRole,
-        plainEnglish: file.description,
-        focalCode: file.focalCode,
-        focalLine: file.focalLine,
-        inbound: file.flowExplanation?.inbound,
-        outbound: file.flowExplanation?.outbound,
-        routes: file.routes,
-        dataEntities: file.dataEntities,
-        x: colX,
-        y: nodeY,
-        width: NODE_WIDTH,
-        height: NODE_HEIGHT,
-        label: file.path,
-        stateCount: file.states.length,
-        hookCount: file.hooks.length,
-        apiCount: file.apiCalls.length,
-        previewType: file.previewType,
-        riskScore: file.blastRadius?.score,
-      });
+    let cursorY = 90;
+    colFiles.forEach((file) => {
+      const symbols = orderSymbols(file);
+      if (symbols.length === 0) {
+        nodes.push({
+          id: file.id,
+          fileId: file.id,
+          name: file.name,
+          path: file.path,
+          type: file.type,
+          role: file.pipelineRole,
+          plainEnglish: file.description,
+          focalCode: file.focalCode,
+          focalLine: file.focalLine,
+          inbound: file.flowExplanation?.inbound,
+          outbound: file.flowExplanation?.outbound,
+          routes: file.routes,
+          dataEntities: file.dataEntities,
+          x: colX,
+          y: cursorY,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+          label: file.path,
+          stateCount: file.states.length,
+          hookCount: file.hooks.length,
+          apiCount: file.apiCalls.length,
+          previewType: file.previewType,
+          riskScore: file.blastRadius?.score,
+        });
+        cursorY += NODE_HEIGHT + GAP_Y;
+      } else {
+        // Swimlane: compact stacked function nodes under a file header offset.
+        // 44px gaps leave room for the vertical edge pills between cards.
+        symbols.forEach((fn) => {
+          pushFunctionNode(file, fn, colX + 12, cursorY);
+          cursorY += FN_NODE_HEIGHT + 44;
+        });
+        cursorY += GAP_Y - 18;
+      }
     });
   });
 
-  // 3. PIPELINE EDGE RESOLVER: Connects nodes & labels what data is passed
+  // 3. INTRA-FILE CALL EDGES from the deterministic function IR.
+  // These are facts parsed from bodies — never hallucinated — and they are
+  // what lets a single-file project (e.g. piano app.js) render a real graph.
+  const pushIntraFileEdges = () => {
+    const edgeSet = new Set(edges.map((e) => `${e.from}->${e.to}`));
+    for (const file of files) {
+      const symbols = file.functions ?? [];
+      if (symbols.length === 0) continue;
+      const byName = new Map<string, (typeof symbols)[number][]>();
+      for (const s of symbols) {
+        if (!byName.has(s.name)) byName.set(s.name, []);
+        byName.get(s.name)!.push(s);
+      }
+      for (const caller of symbols) {
+        const seenTargets = new Set<string>();
+        for (const call of caller.calls) {
+          const targets = byName.get(call.baseName);
+          if (!targets) continue;
+          for (const target of targets) {
+            if (target.id === caller.id || seenTargets.has(target.id)) continue;
+            seenTargets.add(target.id);
+            const key = `${caller.id}->${target.id}`;
+            if (edgeSet.has(key)) continue;
+            edgeSet.add(key);
+            edges.push({
+              id: `edge-${caller.id}-${target.id}`,
+              from: caller.id,
+              to: target.id,
+              fromName: caller.name,
+              toName: target.name,
+              label: call.args ? `${target.name}(${call.args.slice(0, 24)})` : target.name,
+              dataPassed: call.args || target.name,
+              whatHappens: `${caller.name} invokes ${target.name} at line ${call.line}`,
+              codeSnippet: target.signature,
+              callerFunction: caller.name,
+              targetFunction: target.name,
+              parametersPassed: call.args,
+              whyCalled: `Direct call at ${file.name}:${call.line}`,
+              type: 'data',
+              isActive: false,
+              animated: false,
+            });
+          }
+        }
+      }
+    }
+    return edgeSet;
+  };
+
+  // 4. PIPELINE EDGE RESOLVER: Connects nodes & labels what data is passed
   const edgeSet = new Set<string>();
+
+  const resolveEndpointNode = (
+    file: ParsedCodeFile,
+    fnNameHint?: string,
+    role: 'src' | 'tgt' = 'tgt'
+  ): { id: string; name: string } => {
+    const fns = file.functions ?? [];
+    if (fns.length === 0) return { id: file.id, name: file.name };
+    if (fnNameHint) {
+      const direct = fns.find((f) => f.name === fnNameHint);
+      if (direct) return { id: direct.id, name: direct.name };
+    }
+    if (role === 'tgt') {
+      const entry = fns.find((f) => f.kind === 'entrypoint' || f.name === 'init' || f.name === 'main') || fns[0];
+      return { id: entry.id, name: entry.name };
+    }
+    const top = fns.find((f) => f.kind === 'entrypoint' || f.name === 'init' || f.name === 'main') || fns[0];
+    return { id: top.id, name: top.name };
+  };
 
   // A. AI-verified connections first — then heuristics fill gaps for pairs
   // the AI missed (no early return: uncovered files would otherwise sit edgeless)
@@ -201,12 +330,16 @@ export function calculateLayout(
         return normPath === normRef || normPath.endsWith('/' + normRef) || normRef.endsWith('/' + normPath);
       });
     };
-    connections.forEach((conn) => {
-      const src = resolveConnectionFile(conn.from);
-      const tgt = resolveConnectionFile(conn.to);
 
-      if (src && tgt && src.id !== tgt.id) {
-        const key = `${src.id}->${tgt.id}`;
+    connections.forEach((conn) => {
+      const srcFile = resolveConnectionFile(conn.from);
+      const tgtFile = resolveConnectionFile(conn.to);
+
+      if (srcFile && tgtFile && srcFile.id !== tgtFile.id) {
+        const srcEndpoint = resolveEndpointNode(srcFile, conn.callerFunction, 'src');
+        const tgtEndpoint = resolveEndpointNode(tgtFile, conn.targetFunction, 'tgt');
+
+        const key = `${srcEndpoint.id}->${tgtEndpoint.id}`;
         if (!edgeSet.has(key)) {
           edgeSet.add(key);
 
@@ -217,11 +350,11 @@ export function calculateLayout(
             : 'calls';
 
           edges.push({
-            id: `edge-${src.id}-${tgt.id}`,
-            from: src.id,
-            to: tgt.id,
-            fromName: src.name,
-            toName: tgt.name,
+            id: `edge-${srcEndpoint.id}-${tgtEndpoint.id}`,
+            from: srcEndpoint.id,
+            to: tgtEndpoint.id,
+            fromName: srcEndpoint.name,
+            toName: tgtEndpoint.name,
             label: shortLabel,
             dataPassed: conn.dataPassed,
             whatHappens: conn.whatHappens,
@@ -245,6 +378,29 @@ export function calculateLayout(
   // claimed by AI edges are skipped via edgeSet. The View->Controller direct
   // edge is skipped when THIS source view already routes through a guard
   // (checked against edges claimed so far — prevents duplicate corridors).
+  // Heuristic edges land on function endpoints when the file expanded into
+  // function nodes, so every line connects to a rendered node (never dangles).
+  const pushHeuristicEdge = (
+    src: ParsedCodeFile,
+    tgt: ParsedCodeFile,
+    edge: Omit<CanvasEdge, 'id' | 'from' | 'to' | 'fromName' | 'toName'> & { label: string }
+  ) => {
+    const srcEndpoint = resolveEndpointNode(src, undefined, 'src');
+    const tgtEndpoint = resolveEndpointNode(tgt, undefined, 'tgt');
+    const endpointKey = `${srcEndpoint.id}->${tgtEndpoint.id}`;
+    if (edgeSet.has(endpointKey)) return;
+    edgeSet.add(`${src.id}->${tgt.id}`);
+    edgeSet.add(endpointKey);
+    edges.push({
+      id: `edge-${srcEndpoint.id}-${tgtEndpoint.id}`,
+      from: srcEndpoint.id,
+      to: tgtEndpoint.id,
+      fromName: srcEndpoint.name,
+      toName: tgtEndpoint.name,
+      ...edge,
+    });
+  };
+
   files.forEach((src) => {
     files.forEach((tgt) => {
       if (src.id === tgt.id) return;
@@ -261,13 +417,7 @@ export function calculateLayout(
 
       // 1. Gateway -> Middleware (main.go -> csrf.go, auth.go)
       if (srcRole === 'gateway' && tgtRole === 'guard') {
-        edgeSet.add(key);
-        edges.push({
-          id: `edge-${src.id}-${tgt.id}`,
-          from: src.id,
-          to: tgt.id,
-          fromName: src.name,
-          toName: tgt.name,
+        pushHeuristicEdge(src, tgt, {
           label: 'applies guard',
           dataPassed: 'HTTP handler stack',
           whatHappens: `${src.name} registers security guard ${tgt.name} to intercept incoming traffic.`,
@@ -275,15 +425,10 @@ export function calculateLayout(
         });
       }
 
-      // 2. View -> Client Script (home.html -> homepage.js)
-      else if ((srcRole === 'view' || src.type === 'page') && tgtRole === 'script' && isDomainMatch) {
-        edgeSet.add(key);
-        edges.push({
-          id: `edge-${src.id}-${tgt.id}`,
-          from: src.id,
-          to: tgt.id,
-          fromName: src.name,
-          toName: tgt.name,
+      // 2. View -> Client Script (home.html -> homepage.js, index.html -> app.js).
+      // Script tags are entry-agnostic: any view may load any script.
+      else if ((srcRole === 'view' || src.type === 'page') && tgtRole === 'script') {
+        pushHeuristicEdge(src, tgt, {
           label: 'binds script',
           dataPassed: 'DOM event listeners',
           whatHappens: `${src.name} loads interactive script ${tgt.name}.`,
@@ -293,14 +438,8 @@ export function calculateLayout(
 
       // 3. View/Script -> Middleware/Guard (login.html -> auth.go, homepage.js -> csrf.go)
       else if ((srcRole === 'view' || srcRole === 'script') && tgtRole === 'guard' && (isDomainMatch || tgt.path.includes('csrf') || tgt.path.includes('session'))) {
-        edgeSet.add(key);
         const routeMethod = src.routes?.[0] ? src.routes[0].split(' ')[0] : 'POST';
-        edges.push({
-          id: `edge-${src.id}-${tgt.id}`,
-          from: src.id,
-          to: tgt.id,
-          fromName: src.name,
-          toName: tgt.name,
+        pushHeuristicEdge(src, tgt, {
           label: `${routeMethod} request`,
           dataPassed: 'Intercepts credentials',
           whatHappens: `${src.name} dispatches action intercepted by security guard ${tgt.name}.`,
@@ -310,13 +449,7 @@ export function calculateLayout(
 
       // 4. Middleware/Guard -> Controller (auth.go -> auth/handler.go)
       else if (tgtRole === 'controller' && srcRole === 'guard' && (isDomainMatch || src.path.includes('session') || src.path.includes('auth'))) {
-        edgeSet.add(key);
-        edges.push({
-          id: `edge-${src.id}-${tgt.id}`,
-          from: src.id,
-          to: tgt.id,
-          fromName: src.name,
-          toName: tgt.name,
+        pushHeuristicEdge(src, tgt, {
           label: 'passes context',
           dataPassed: 'Validated context',
           whatHappens: `${src.name} passes verified request downstream to ${tgt.name} controller.`,
@@ -331,20 +464,14 @@ export function calculateLayout(
       else if (isDomainMatch && (srcRole === 'view' || src.type === 'page') && (tgtRole === 'controller' || tgt.path.includes('handler'))) {
         const routesViaGuard = [...edgeSet].some((k) => {
           const [fromId, toId] = k.split('->');
-          if (fromId !== src.id) return false;
-          const hop = files.find((f) => f.id === toId);
+          if (fromId !== src.id && !fromId.startsWith(`${src.id}::`)) return false;
+          const hop = files.find((f) => f.id === toId || toId.startsWith(`${f.id}::`));
           return hop?.pipelineRole === 'guard';
         });
         if (routesViaGuard) {
           // Skip: View -> Guard -> Controller already covers this path.
         } else {
-          edgeSet.add(key);
-          edges.push({
-            id: `edge-${src.id}-${tgt.id}`,
-            from: src.id,
-            to: tgt.id,
-            fromName: src.name,
-            toName: tgt.name,
+          pushHeuristicEdge(src, tgt, {
             label: 'POST /form',
             dataPassed: 'Form submit payload',
             whatHappens: `${src.name} sends user action directly to ${tgt.name} controller.`,
@@ -355,13 +482,7 @@ export function calculateLayout(
 
       // 6. Controller -> Service (auth/handler.go -> auth/service.go)
       else if (isDomainMatch && (srcRole === 'controller' || src.path.includes('handler')) && (tgtRole === 'service' || tgt.path.includes('service'))) {
-        edgeSet.add(key);
-        edges.push({
-          id: `edge-${src.id}-${tgt.id}`,
-          from: src.id,
-          to: tgt.id,
-          fromName: src.name,
-          toName: tgt.name,
+        pushHeuristicEdge(src, tgt, {
           label: 'calls service',
           dataPassed: 'Validated domain input',
           whatHappens: `${src.name} delegates business logic to ${tgt.name}.`,
@@ -371,13 +492,7 @@ export function calculateLayout(
 
       // 7. Service -> Storage (auth/service.go -> auth/repository.go)
       else if (isDomainMatch && (srcRole === 'service' || src.path.includes('service')) && (tgtRole === 'storage' || tgt.path.includes('repo') || tgt.path.includes('model'))) {
-        edgeSet.add(key);
-        edges.push({
-          id: `edge-${src.id}-${tgt.id}`,
-          from: src.id,
-          to: tgt.id,
-          fromName: src.name,
-          toName: tgt.name,
+        pushHeuristicEdge(src, tgt, {
           label: 'SQL query',
           dataPassed: 'SQL parameters & entities',
           whatHappens: `${src.name} calls database repository ${tgt.name} to persist or read records.`,
@@ -386,6 +501,10 @@ export function calculateLayout(
       }
     });
   });
+
+  // Intra-file call edges always run last: they wire function nodes inside the
+  // same file and can never duplicate file-level pairs (different id space).
+  pushIntraFileEdges();
 
   return { nodes, edges };
 }

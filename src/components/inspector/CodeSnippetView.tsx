@@ -1,23 +1,37 @@
 import { useState } from 'react';
-import type { ParsedCodeFile } from '../../types/ast';
+import type { ParsedCodeFile, ParsedSymbol } from '../../types/ast';
 import { Copy, Check, FileCode, Code2, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface CodeSnippetViewProps {
   file: ParsedCodeFile;
   highlightLine?: number;
+  /** When a function node is selected, show its exact body as the primary view */
+  symbol?: ParsedSymbol | null;
 }
 
-export function CodeSnippetView({ file, highlightLine }: CodeSnippetViewProps) {
+export function CodeSnippetView({ file, highlightLine, symbol }: CodeSnippetViewProps) {
   const [copied, setCopied] = useState(false);
   const [showFullCode, setShowFullCode] = useState(false);
 
   const lines = (file.code ?? '').split('\n');
+
+  // Function-scoped view: exact body lines of the selected symbol
+  const symbolLines = symbol
+    ? lines.slice(symbol.startLine - 1, symbol.endLine)
+    : null;
 
   // Compute focal lines (either from AI focalLine, highlightLine prop, or first function line)
   const targetLine = highlightLine || file.focalLine || 1;
   const startIdx = Math.max(0, targetLine - 5);
   const endIdx = Math.min(lines.length, targetLine + 12);
   const focalLines = lines.slice(startIdx, endIdx);
+
+  const primaryLines = symbolLines ?? focalLines;
+  const primaryStartLine = symbol ? symbol.startLine : startIdx + 1;
+  const primaryTarget = symbol ? (highlightLine ?? symbol.startLine) : targetLine;
+  const primaryTitle = symbol
+    ? `${symbol.name} · lines ${symbol.startLine}–${symbol.endLine}`
+    : `Key Code Execution (Line ${targetLine})`;
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -33,12 +47,12 @@ export function CodeSnippetView({ file, highlightLine }: CodeSnippetViewProps) {
           <div className="flex items-center gap-1.5 text-[#34d399]">
             <Code2 className="w-3.5 h-3.5" />
             <span className="font-semibold uppercase tracking-wider text-[10px]">
-              Key Code Execution (Line {targetLine})
+              {primaryTitle}
             </span>
           </div>
 
           <button
-            onClick={() => handleCopy(file.focalCode || focalLines.join('\n'))}
+            onClick={() => handleCopy(symbol ? symbol.body : file.focalCode || focalLines.join('\n'))}
             className="flex items-center gap-1 text-[10px] text-[#8a8f98] hover:text-white px-2 py-0.5 rounded bg-[#16171d] border border-[#23252a] transition-colors cursor-pointer"
           >
             {copied ? <Check className="w-3 h-3 text-[#34d399]" /> : <Copy className="w-3 h-3" />}
@@ -49,9 +63,9 @@ export function CodeSnippetView({ file, highlightLine }: CodeSnippetViewProps) {
         <div className="p-2 overflow-x-auto bg-[#050608]">
           <table className="w-full border-collapse">
             <tbody>
-              {focalLines.map((lineText, idx) => {
-                const lineNum = startIdx + idx + 1;
-                const isTarget = lineNum === targetLine;
+              {primaryLines.map((lineText, idx) => {
+                const lineNum = primaryStartLine + idx;
+                const isTarget = lineNum === primaryTarget;
 
                 return (
                   <tr
