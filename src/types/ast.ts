@@ -123,6 +123,8 @@ export interface ParsedCodeFile {
   screenLocation?: ScreenLocation;
   routes?: string[];
   dataEntities?: string[];
+  focalCode?: string;
+  focalLine?: number;
 }
 
 export interface StorybookNarrative {

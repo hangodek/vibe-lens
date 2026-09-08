@@ -12,6 +12,8 @@ export interface CanvasNode {
   outbound?: string;
   routes?: string[];
   dataEntities?: string[];
+  focalCode?: string;
+  focalLine?: number;
   x: number;
   y: number;
   width: number;

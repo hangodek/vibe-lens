@@ -28,6 +28,8 @@ export interface VibeMasterFile {
   inbound: string;      // What enters: e.g. "HTTP POST /login with form credentials"
   outbound: string;     // What exits: e.g. "Calls authService.Login(), sets session cookie"
   routes?: string[];    // Handled or requested endpoints e.g. ["GET /profile", "POST /login"]
+  focalCode?: string;   // The key 5-15 lines of code representing this file
+  focalLine?: number;   // The focal line number in the source file
   calls: string[];
   calledBy: string[];
   dataShape: VibeDataStructure[];
