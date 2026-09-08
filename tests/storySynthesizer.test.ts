@@ -27,4 +27,26 @@ describe('storySynthesizer - Authentic Human Journeys', () => {
       expect(step.storybook?.humanCausality.length).toBeGreaterThan(10);
     });
   });
+
+  it('synthesizes User Login Journey with exact code lines and passed credentials', () => {
+    const files = [
+      parseSourceCode('web/templates/auth/login.html', '<form action="/login"></form>'),
+      parseSourceCode('internal/shared/middleware/auth.go', 'func RequireGuest() {}'),
+      parseSourceCode('internal/auth/handler.go', 'func Login() {}'),
+      parseSourceCode('internal/auth/service.go', 'func Authenticate() {}'),
+      parseSourceCode('internal/auth/repository.go', 'func FindByEmail() {}'),
+    ];
+
+    const traces = synthesizeUserJourneys(files);
+    const loginTrace = traces.find((t) => t.id === 'trace-auth-login');
+
+    expect(loginTrace).toBeDefined();
+    expect(loginTrace?.title).toBe('User Login & Session Flow');
+    expect(loginTrace?.steps.length).toBe(5);
+
+    // Verify code lines and passed parameters are populated on each step
+    expect(loginTrace?.steps[0].codeLine).toContain('<form');
+    expect(loginTrace?.steps[0].dataPassed).toContain('POST /login');
+    expect(loginTrace?.steps[2].codeLine).toContain('r.FormValue');
+  });
 });

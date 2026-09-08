@@ -147,4 +147,23 @@ describe('Project Enricher (AI Master Data Integrator)', () => {
     expect(enriched.framework).toContain('Go 1.22 + SSR HTML');
     expect(enriched.description).toBe('A secure authentication and session management portal.');
   });
+
+  it('populates focalCode and focalLine from AI master', () => {
+    const masterWithFocal: VibeLensProjectMaster = {
+      ...dummyMaster,
+      files: {
+        'internal/auth/handler.go': {
+          ...dummyMaster.files['internal/auth/handler.go'],
+          focalCode: 'func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {\n  email := r.FormValue("email")\n}',
+          focalLine: 42,
+        },
+      },
+    };
+
+    const enriched = enrichProjectWithMaster(dummyProject, masterWithFocal);
+    const handler = enriched.files.find((f) => f.path === 'internal/auth/handler.go')!;
+
+    expect(handler.focalCode).toContain('func (h *Handler) Login');
+    expect(handler.focalLine).toBe(42);
+  });
 });
