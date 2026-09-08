@@ -20,7 +20,7 @@ export interface AnalysisProgress {
   percent: number;
 }
 
-// Selects the 5 to 8 files that form the primary execution chain across ANY stack
+// Selects the core execution chain files (gateways, guards, handlers, services, storage, views, scripts)
 function selectCoreExecutionFiles(files: RawFile[]): RawFile[] {
   const selected: RawFile[] = [];
   const added = new Set<string>();
@@ -37,19 +37,25 @@ function selectCoreExecutionFiles(files: RawFile[]): RawFile[] {
     }
   };
 
-  // 1. User entry screens & templates (HTML / TSX / Vue / Svelte / Blade)
+  // 1. Entry / Gateway (main.go, server.ts, app.tsx)
+  addMatching((p) => p.includes('main.') || p.includes('server.') || p.includes('manage.py'), 1);
+
+  // 2. Middlewares & Security Guards (auth.go, csrf.go, session.go)
+  addMatching((p) => p.includes('middleware') || p.includes('guard'), 2);
+
+  // 3. User views & templates (login.html, home.html, page.tsx)
   addMatching((p) => p.endsWith('.html') || p.endsWith('.tsx') || p.endsWith('.vue') || p.includes('template') || p.includes('page'), 2);
 
-  // 2. Middlewares & Guards (Auth / Session / RateLimit)
-  addMatching((p) => p.includes('middleware') || p.includes('guard') || p.includes('auth'), 1);
+  // 4. Client Interactive Scripts (homepage.js, cart.js)
+  addMatching((p) => p.endsWith('.js') && (p.includes('static') || p.includes('javascript') || p.includes('scripts')), 2);
 
-  // 3. Controllers & Route Handlers
+  // 5. Controllers & Route Handlers (auth/handler.go, product/handler.go)
   addMatching((p) => p.includes('handler') || p.includes('controller') || p.includes('route'), 2);
 
-  // 4. Domain Services & Business Logic
+  // 6. Domain Services & Business Logic (auth/service.go, product/service.go)
   addMatching((p) => p.includes('service') || p.includes('usecase') || p.includes('logic'), 2);
 
-  // 5. Database Repositories & SQL Models
+  // 7. Database Repositories & SQL Models (auth/repository.go, product/repository.go)
   addMatching((p) => p.includes('repo') || p.includes('model') || p.includes('database') || p.includes('store'), 2);
 
   // Fallback to first few files if structure is unconventional
@@ -58,7 +64,7 @@ function selectCoreExecutionFiles(files: RawFile[]): RawFile[] {
       if (!added.has(f.path)) {
         selected.push(f);
         added.add(f.path);
-        if (selected.length >= 6) break;
+        if (selected.length >= 8) break;
       }
     }
   }
@@ -68,11 +74,19 @@ function selectCoreExecutionFiles(files: RawFile[]): RawFile[] {
 
 function buildUnifiedPrompt(files: RawFile[], projectName: string): string {
   const fileExcerpts = files
-    .map((f) => `=== FILE: ${f.path} (${f.name}) ===\n${f.code.slice(0, 1600)}`)
+    .map((f) => {
+      const lines = f.code.split('\n');
+      const sample = lines.slice(0, 45).join('\n');
+      return `=== FILE: ${f.path} (${lines.length} total lines) ===\n${sample}`;
+    })
     .join('\n\n');
 
-  return `You are an elite Lead Software Architect explaining a codebase to a vibe coder.
-Analyze this codebase execution chain for project "${projectName}".
+  return `You are a Lead Software Architect analyzing this codebase for a visual architecture tool.
+Project: "${projectName}".
+
+Determine:
+1. Every file role, clear plain-English explanation of its purpose, and the key 5-15 line code snippet with line numbers that defines what this file does.
+2. The exact connection graph (including middlewares like auth.go/csrf.go and client scripts like homepage.js): which file connects to which, what data is passed, and what happens.
 
 Return ONLY a valid JSON object matching this exact schema:
 {
@@ -82,58 +96,39 @@ Return ONLY a valid JSON object matching this exact schema:
     {
       "path": "exact file path",
       "name": "filename",
-      "role": "view" | "controller" | "service" | "storage" | "gateway" | "guard" | "utility",
-      "plainEnglish": "What THIS specific file does in simple human English.",
-      "inbound": "What enters this file (e.g. HTTP POST /login with form credentials)",
-      "outbound": "What this file produces or calls (e.g. Calls authService.Login(), sets cookie)",
-      "routes": ["GET /profile", "POST /login"],
-      "dataShape": [
-        {
-          "name": "User",
-          "kind": "struct",
-          "fields": [{ "name": "Email", "type": "string", "purpose": "User email address" }]
-        }
-      ],
-      "blastRadius": {
-        "score": "low" | "moderate" | "high",
-        "riskLabel": "e.g. Core Auth Controller",
-        "safeInvariants": ["Keep existing HTTP handler signatures intact"],
-        "impactedFiles": ["dependent file paths"]
-      }
+      "role": "view" | "controller" | "service" | "storage" | "gateway" | "guard" | "script" | "utility",
+      "plainEnglish": "What THIS specific file does in 1-2 clear human sentences",
+      "focalCode": "The exact 5-15 lines of code that represent this file core function",
+      "focalLine": 24,
+      "inbound": "What triggers or passes into it",
+      "outbound": "What it produces or passes out",
+      "routes": ["POST /login"]
     }
   ],
   "connections": [
     {
-      "from": "source file path (e.g. web/templates/auth/login.html)",
-      "to": "target file path (e.g. internal/auth/handler.go)",
-      "whatHappens": "Visitor submits login form with credentials",
-      "dataPassed": "POST /login",
-      "codeSnippet": "http.HandleFunc(\\"POST /login\\", h.Login)"
+      "from": "source file path",
+      "to": "target file path",
+      "whatHappens": "What occurs between them (e.g. Visitor enters credentials and submits form)",
+      "dataPassed": "Short label (under 20 chars, e.g. POST /login)",
+      "codeSnippet": "Key code line linking them"
     }
   ],
   "journeys": [
     {
       "id": "journey-1",
-      "title": "User Execution Journey",
-      "description": "User form input down to database persistence",
+      "title": "User Execution Flow",
+      "description": "Form input through middleware, handler, service, and database",
       "steps": [
         {
           "file": "file path in chain",
           "action": "Human explanation of what happens in this step",
           "dataPassed": "Parameters or payload passed to next step",
           "codeLine": "The exact line of code responsible",
-          "codeExplanation": "Why this line exists and what it does"
+          "codeExplanation": "Why this line exists and what it does",
+          "lineHighlight": 24
         }
       ]
-    }
-  ],
-  "workspaces": [
-    {
-      "id": "auth",
-      "name": "Authentication",
-      "description": "Login, registration, and session cookies",
-      "files": ["file paths"],
-      "icon": "ShieldCheck"
     }
   ]
 }
@@ -159,7 +154,6 @@ export async function analyzeProjectWithAI(
 
   if (onProgress) onProgress({ message: `Selecting core execution chain...`, percent: 20 });
 
-  // Select the focused 5-8 core chain files (~10k chars total) for ultra-fast 8s AI execution
   const targetFiles = selectCoreExecutionFiles(rawFiles);
   const prompt = buildUnifiedPrompt(targetFiles, projectName);
 
@@ -184,7 +178,7 @@ export async function analyzeProjectWithAI(
     }
   }
 
-  // Ensure any files not in the core AI chain are given clean roles and descriptions
+  // Ensure any files not in the core AI chain have clean roles, descriptions and focal code snippets
   for (const rf of rawFiles) {
     if (!fileMap[rf.path]) {
       const p = rf.path.toLowerCase();
@@ -198,13 +192,29 @@ export async function analyzeProjectWithAI(
         ? 'view'
         : p.includes('middleware') || p.includes('guard')
         ? 'guard'
+        : p.endsWith('.js')
+        ? 'script'
         : 'utility';
+
+      // Find first meaningful function/struct/class/form line for focal highlight
+      const lines = rf.code.split('\n');
+      let focalLine = 1;
+      for (let i = 0; i < Math.min(lines.length, 60); i++) {
+        const line = lines[i];
+        if (line.includes('func ') || line.includes('class ') || line.includes('type ') || line.includes('def ') || line.includes('<form') || line.includes('export ') || line.includes('function ')) {
+          focalLine = i + 1;
+          break;
+        }
+      }
+      const focalCode = lines.slice(Math.max(0, focalLine - 1), Math.min(lines.length, focalLine + 12)).join('\n');
 
       fileMap[rf.path] = {
         path: rf.path,
         name: rf.name,
         role,
         plainEnglish: `${rf.name} provides supporting domain functionality for this application.`,
+        focalCode,
+        focalLine,
         inbound: 'Receives caller parameters.',
         outbound: 'Returns processed output.',
         calls: [],

@@ -53,6 +53,8 @@ export function enrichProjectWithMaster(
       states: states.length > 0 ? states : file.states,
       routes: masterFile.routes && masterFile.routes.length > 0 ? masterFile.routes : file.routes,
       dataEntities: masterFile.dataShape?.map((s) => s.name) || file.dataEntities,
+      focalCode: masterFile.focalCode || file.focalCode,
+      focalLine: masterFile.focalLine || file.focalLine,
     };
   });
 
