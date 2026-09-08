@@ -16,7 +16,7 @@ function checkBin(bin: string): boolean {
   }
 }
 
-function spawnTool(tool: string, prompt: string, timeoutMs = 35000): Promise<string> {
+function spawnTool(tool: string, prompt: string, timeoutMs = 65000): Promise<string> {
   return new Promise((resolve, reject) => {
     let cmd = 'opencode';
     let args: string[] = ['run', '--pure', prompt];
@@ -31,7 +31,7 @@ function spawnTool(tool: string, prompt: string, timeoutMs = 35000): Promise<str
 
     const child = spawn(cmd, args, {
       env: { ...process.env },
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let stdout = '';
@@ -75,27 +75,10 @@ function spawnTool(tool: string, prompt: string, timeoutMs = 35000): Promise<str
 }
 
 async function runCliTool(tool: string, prompt: string): Promise<string> {
-  // Try the user's chosen tool first (e.g. opencode)
-  try {
-    const out = await spawnTool(tool, prompt);
-    if (out) return out;
-  } catch (err: any) {
-    console.warn(`[Local AI] Primary tool (${tool}) failed or timed out:`, err?.message);
-  }
-
-  // If the chosen tool failed, try the other available tools on PATH as graceful failover
-  const fallbacks = ['opencode', 'claude', 'agy'].filter((t) => t !== tool && checkBin(t));
-  for (const fb of fallbacks) {
-    try {
-      console.log(`[Local AI] Attempting fallback tool: ${fb}`);
-      const out = await spawnTool(fb, prompt);
-      if (out) return out;
-    } catch (e: any) {
-      console.warn(`[Local AI] Fallback tool (${fb}) failed:`, e?.message);
-    }
-  }
-
-  throw new Error(`All available CLI tools failed to execute prompt`);
+  // Execute the exact tool requested by the user
+  const out = await spawnTool(tool, prompt, 60000);
+  if (out) return out;
+  throw new Error(`CLI tool ${tool} returned empty output`);
 }
 
 export function localAiPlugin(): Plugin {

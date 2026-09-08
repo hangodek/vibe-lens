@@ -7,12 +7,128 @@ export function synthesizeUserJourneys(files: ParsedCodeFile[]): ExecutionTrace[
   const findFile = (predicate: (path: string, name: string) => boolean) =>
     files.find((f) => predicate(f.path.toLowerCase(), f.name.toLowerCase()));
 
-  // 1. JOURNEY: USER REGISTRATION & ACCOUNT CREATION
-  const regView = findFile((p) => p.includes('register') && (p.endsWith('.html') || p.endsWith('.tsx') || p.endsWith('.vue')));
+  // 0. PRIMARY JOURNEY: USER LOGIN & AUTHENTICATION FLOW
+  const loginView = findFile((p) => p.includes('login') && (p.endsWith('.html') || p.endsWith('.tsx') || p.endsWith('.vue')));
   const authHandler = findFile((p) => (p.includes('auth') || p.includes('user')) && (p.includes('handler') || p.includes('route') || p.includes('controller')));
   const authService = findFile((p) => (p.includes('auth') || p.includes('user')) && p.includes('service'));
   const authRepo = findFile((p) => (p.includes('auth') || p.includes('user')) && (p.includes('repo') || p.includes('model') || p.includes('database')));
-  const authGuard = findFile((p) => p.includes('middleware') && (p.includes('auth') || p.includes('guest') || p.includes('ratelimit')));
+  const authGuard = findFile((p) => p.includes('middleware') && (p.includes('auth') || p.includes('session') || p.includes('guest')));
+
+  if (loginView && authHandler) {
+    const loginSteps: TraceStep[] = [];
+
+    // Step 1: Login View
+    loginSteps.push({
+      id: 'step-login-1',
+      stepNumber: 1,
+      title: `Visitor inputs credentials in ${loginView.name}`,
+      description: 'User enters email/username and password into the login form and clicks Submit.',
+      activeNodeId: loginView.id,
+      targetNodeId: authGuard ? authGuard.id : authHandler.id,
+      codeLine: '<form action="/login" method="POST">',
+      dataPassed: 'POST /login (credentials)',
+      codeExplanation: 'Submits user credentials to the server endpoint with CSRF protection.',
+      storybook: {
+        chapterNumber: 1,
+        chapterTitle: 'Credential Submission',
+        story: `The visitor inputs their account credentials into ${loginView.name} and clicks Sign In.`,
+        humanCausality: 'The browser sends an HTTP POST request carrying the form payload.',
+      },
+    });
+
+    // Step 2: Security Middleware (if present)
+    if (authGuard) {
+      loginSteps.push({
+        id: 'step-login-guard',
+        stepNumber: loginSteps.length + 1,
+        title: `Security interception in ${authGuard.name}`,
+        description: 'Verifies whether client has an existing active session before allowing login.',
+        activeNodeId: authGuard.id,
+        targetNodeId: authHandler.id,
+        codeLine: 'if shared.UserFromContext(r.Context()) != nil',
+        dataPassed: 'r *http.Request',
+        codeExplanation: 'Ensures unauthenticated guest state before processing credentials.',
+        storybook: {
+          chapterNumber: loginSteps.length + 1,
+          chapterTitle: 'Session Gatekeeper',
+          story: `${authGuard.name} checks incoming traffic to ensure guest access.`,
+          humanCausality: 'Intercepts requests before business logic executes.',
+        },
+      });
+    }
+
+    // Step 3: Route Handler
+    loginSteps.push({
+      id: 'step-login-handler',
+      stepNumber: loginSteps.length + 1,
+      title: `Request controller in ${authHandler.name}`,
+      description: 'Extracts username and password from request and dispatches to auth service.',
+      activeNodeId: authHandler.id,
+      targetNodeId: authService ? authService.id : authRepo ? authRepo.id : authHandler.id,
+      codeLine: 'username := strings.TrimSpace(r.FormValue("username"))',
+      dataPassed: 'email, password strings',
+      codeExplanation: 'Extracts form parameters and delegates validation to domain service.',
+      storybook: {
+        chapterNumber: loginSteps.length + 1,
+        chapterTitle: 'Controller Handling',
+        story: `${authHandler.name} reads the submitted parameters and passes them to authentication service.`,
+        humanCausality: 'Separates HTTP request transport from core domain rules.',
+      },
+    });
+
+    // Step 4: Domain Service
+    if (authService) {
+      loginSteps.push({
+        id: 'step-login-service',
+        stepNumber: loginSteps.length + 1,
+        title: `Password validation in ${authService.name}`,
+        description: 'Queries database for user profile and compares bcrypt password hash.',
+        activeNodeId: authService.id,
+        targetNodeId: authRepo ? authRepo.id : authHandler.id,
+        codeLine: 'user, err := s.repo.GetUserByUsernameOrEmail(identifier)',
+        dataPassed: 'identifier string',
+        codeExplanation: 'Verifies account existence and validates cryptographic password hash.',
+        storybook: {
+          chapterNumber: loginSteps.length + 1,
+          chapterTitle: 'Cryptographic Verification',
+          story: `${authService.name} retrieves the user record and verifies password authenticity.`,
+          humanCausality: 'Passwords must never be stored in plain text.',
+        },
+      });
+    }
+
+    // Step 5: Database Repository
+    if (authRepo) {
+      loginSteps.push({
+        id: 'step-login-repo',
+        stepNumber: loginSteps.length + 1,
+        title: `Database query in ${authRepo.name}`,
+        description: 'Executes parameterized SQL SELECT query to retrieve user row.',
+        activeNodeId: authRepo.id,
+        targetNodeId: authHandler.id,
+        codeLine: 'SELECT id, username, email, password_hash FROM users',
+        dataPassed: '*User struct (id, email, hash)',
+        codeExplanation: 'Executes parameterized query preventing SQL injection.',
+        storybook: {
+          chapterNumber: loginSteps.length + 1,
+          chapterTitle: 'Database Record Retrieval',
+          story: `${authRepo.name} queries PostgreSQL to retrieve account record.`,
+          humanCausality: 'Retrieves persistent records safely from storage.',
+        },
+      });
+    }
+
+    traces.push({
+      id: 'trace-auth-login',
+      title: 'User Login & Session Flow',
+      triggerLabel: 'User submits login form',
+      description: 'End-to-end execution flow from login form submit through middleware, handler, service, and database.',
+      steps: loginSteps,
+    });
+  }
+
+  // 1. JOURNEY: USER REGISTRATION & ACCOUNT CREATION
+  const regView = findFile((p) => p.includes('register') && (p.endsWith('.html') || p.endsWith('.tsx') || p.endsWith('.vue')));
 
   if (regView && authHandler) {
     const steps: TraceStep[] = [

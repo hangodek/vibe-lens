@@ -20,24 +20,70 @@ export interface AnalysisProgress {
   percent: number;
 }
 
+// Selects the 5 to 8 files that form the primary execution chain across ANY stack
+function selectCoreExecutionFiles(files: RawFile[]): RawFile[] {
+  const selected: RawFile[] = [];
+  const added = new Set<string>();
+
+  const addMatching = (predicate: (p: string) => boolean, limit = 2) => {
+    let count = 0;
+    for (const f of files) {
+      if (!added.has(f.path) && predicate(f.path.toLowerCase())) {
+        selected.push(f);
+        added.add(f.path);
+        count++;
+        if (count >= limit) break;
+      }
+    }
+  };
+
+  // 1. User entry screens & templates (HTML / TSX / Vue / Svelte / Blade)
+  addMatching((p) => p.endsWith('.html') || p.endsWith('.tsx') || p.endsWith('.vue') || p.includes('template') || p.includes('page'), 2);
+
+  // 2. Middlewares & Guards (Auth / Session / RateLimit)
+  addMatching((p) => p.includes('middleware') || p.includes('guard') || p.includes('auth'), 1);
+
+  // 3. Controllers & Route Handlers
+  addMatching((p) => p.includes('handler') || p.includes('controller') || p.includes('route'), 2);
+
+  // 4. Domain Services & Business Logic
+  addMatching((p) => p.includes('service') || p.includes('usecase') || p.includes('logic'), 2);
+
+  // 5. Database Repositories & SQL Models
+  addMatching((p) => p.includes('repo') || p.includes('model') || p.includes('database') || p.includes('store'), 2);
+
+  // Fallback to first few files if structure is unconventional
+  if (selected.length < 3) {
+    for (const f of files) {
+      if (!added.has(f.path)) {
+        selected.push(f);
+        added.add(f.path);
+        if (selected.length >= 6) break;
+      }
+    }
+  }
+
+  return selected;
+}
+
 function buildUnifiedPrompt(files: RawFile[], projectName: string): string {
   const fileExcerpts = files
-    .map((f) => `=== FILE: ${f.path} (${f.name}) ===\n${f.code.slice(0, 3000)}`)
+    .map((f) => `=== FILE: ${f.path} (${f.name}) ===\n${f.code.slice(0, 1600)}`)
     .join('\n\n');
 
   return `You are an elite Lead Software Architect explaining a codebase to a vibe coder.
-Analyze this codebase for project "${projectName}".
+Analyze this codebase execution chain for project "${projectName}".
 
 Return ONLY a valid JSON object matching this exact schema:
 {
   "stack": "e.g. Go 1.22 + SSR HTML Templates + Vanilla JS",
-  "summary": "Clear, concise 1-2 sentence explanation of what this application does and how it runs.",
+  "summary": "Clear 1-2 sentence explanation of how the application runs and processes requests.",
   "files": [
     {
       "path": "exact file path",
       "name": "filename",
       "role": "view" | "controller" | "service" | "storage" | "gateway" | "guard" | "utility",
-      "plainEnglish": "What THIS specific file does in simple, human English.",
+      "plainEnglish": "What THIS specific file does in simple human English.",
       "inbound": "What enters this file (e.g. HTTP POST /login with form credentials)",
       "outbound": "What this file produces or calls (e.g. Calls authService.Login(), sets cookie)",
       "routes": ["GET /profile", "POST /login"],
@@ -60,21 +106,21 @@ Return ONLY a valid JSON object matching this exact schema:
     {
       "from": "source file path (e.g. web/templates/auth/login.html)",
       "to": "target file path (e.g. internal/auth/handler.go)",
-      "whatHappens": "Visitor submits login form with email & password",
-      "dataPassed": "POST /login (email, password payload)",
+      "whatHappens": "Visitor submits login form with credentials",
+      "dataPassed": "POST /login",
       "codeSnippet": "http.HandleFunc(\\"POST /login\\", h.Login)"
     }
   ],
   "journeys": [
     {
       "id": "journey-1",
-      "title": "User Login & Session Flow",
-      "description": "Visitor logs in from HTML form down to database query.",
+      "title": "User Execution Journey",
+      "description": "User form input down to database persistence",
       "steps": [
         {
           "file": "file path in chain",
           "action": "Human explanation of what happens in this step",
-          "dataPassed": "Parameters or payload passed to the next step",
+          "dataPassed": "Parameters or payload passed to next step",
           "codeLine": "The exact line of code responsible",
           "codeExplanation": "Why this line exists and what it does"
         }
@@ -111,16 +157,16 @@ export async function analyzeProjectWithAI(
     }
   }
 
-  if (onProgress) onProgress({ message: `Reading and assembling ${rawFiles.length} files...`, percent: 15 });
+  if (onProgress) onProgress({ message: `Selecting core execution chain...`, percent: 20 });
 
-  // Prioritize meaningful source files up to 25 files for single-pass analysis
-  const targetFiles = rawFiles.slice(0, 25);
+  // Select the focused 5-8 core chain files (~10k chars total) for ultra-fast 8s AI execution
+  const targetFiles = selectCoreExecutionFiles(rawFiles);
   const prompt = buildUnifiedPrompt(targetFiles, projectName);
 
-  if (onProgress) onProgress({ message: `AI agent analyzing architecture and data flows...`, percent: 45 });
+  if (onProgress) onProgress({ message: `OpenCode analyzing execution flow and code lines...`, percent: 50 });
 
   const rawResponse = await executeAIPrompt(prompt);
-  if (onProgress) onProgress({ message: 'Parsing architectural connections and data flows...', percent: 80 });
+  if (onProgress) onProgress({ message: 'Parsing step causality and data handoffs...', percent: 85 });
 
   const parsed = extractJsonFromResponse<{
     stack?: string;
@@ -138,15 +184,28 @@ export async function analyzeProjectWithAI(
     }
   }
 
-  // Ensure any files not explicitly in AI output are indexed cleanly
+  // Ensure any files not in the core AI chain are given clean roles and descriptions
   for (const rf of rawFiles) {
     if (!fileMap[rf.path]) {
+      const p = rf.path.toLowerCase();
+      const role = p.includes('repo') || p.includes('model')
+        ? 'storage'
+        : p.includes('service') || p.includes('usecase')
+        ? 'service'
+        : p.includes('handler') || p.includes('controller') || p.includes('route')
+        ? 'controller'
+        : p.endsWith('.html') || p.endsWith('.tsx') || p.endsWith('.vue')
+        ? 'view'
+        : p.includes('middleware') || p.includes('guard')
+        ? 'guard'
+        : 'utility';
+
       fileMap[rf.path] = {
         path: rf.path,
         name: rf.name,
-        role: rf.path.includes('repo') ? 'storage' : rf.path.includes('service') ? 'service' : rf.path.includes('handler') ? 'controller' : 'view',
-        plainEnglish: `${rf.name} participates as an active component in this application.`,
-        inbound: 'Receives requests from callers.',
+        role,
+        plainEnglish: `${rf.name} provides supporting domain functionality for this application.`,
+        inbound: 'Receives caller parameters.',
         outbound: 'Returns processed output.',
         calls: [],
         calledBy: [],
@@ -154,7 +213,7 @@ export async function analyzeProjectWithAI(
         blastRadius: {
           score: 'low',
           riskLabel: `${rf.name} Unit`,
-          safeInvariants: ['Preserve function and type signatures'],
+          safeInvariants: ['Preserve exported function signatures'],
           impactedFiles: [],
         },
         userJourneys: [],
@@ -166,9 +225,9 @@ export async function analyzeProjectWithAI(
     id: projectId,
     name: projectName,
     stack: parsed.stack || 'Fullstack Application',
-    summary: parsed.summary || 'Application analyzed by AI.',
+    summary: parsed.summary || 'Application analyzed by OpenCode.',
     analyzedAt: new Date().toISOString(),
-    analyzer: 'ai',
+    analyzer: 'opencode',
     files: fileMap,
     connections: parsed.connections || [],
     journeys: parsed.journeys || [],
@@ -176,7 +235,7 @@ export async function analyzeProjectWithAI(
   };
 
   await saveProjectMaster(master);
-  if (onProgress) onProgress({ message: 'Architecture visualizer ready!', percent: 100 });
+  if (onProgress) onProgress({ message: 'Execution flow ready!', percent: 100 });
 
   return master;
 }

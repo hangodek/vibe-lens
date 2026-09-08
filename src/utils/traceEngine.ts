@@ -11,12 +11,12 @@ export function calculateLayout(
   const nodes: CanvasNode[] = [];
   const edges: CanvasEdge[] = [];
 
-  const NODE_WIDTH = 270;
+  const NODE_WIDTH = 280;
   const NODE_HEIGHT = 145;
-  const GAP_X = 75;
-  const GAP_Y = 24;
+  const GAP_X = 220; // Wide horizontal breathing room between architectural columns
+  const GAP_Y = 56;  // Ample vertical breathing room between rows
 
-  // 1. TRACE MODE: Step-by-Step Narrative Flow
+  // 1. TRACE MODE: Clean Horizontal Assembly Line
   if (mode === 'trace' && activeTrace) {
     const uniqueIds = Array.from(
       new Set(
@@ -24,6 +24,7 @@ export function calculateLayout(
       )
     );
 
+    // Baseline: Single straight horizontal line (y = 190) with 220px gap
     uniqueIds.forEach((fileId, index) => {
       const file = files.find((f) => f.id === fileId);
       if (!file) return;
@@ -43,8 +44,8 @@ export function calculateLayout(
         outbound: file.flowExplanation?.outbound,
         routes: file.routes,
         dataEntities: file.dataEntities,
-        x: 80 + index * (NODE_WIDTH + 110),
-        y: 200 + (index % 2 === 1 ? 25 : -25),
+        x: 80 + index * (NODE_WIDTH + 220),
+        y: 190,
         width: NODE_WIDTH,
         height: NODE_HEIGHT,
         label: file.name,
@@ -63,23 +64,32 @@ export function calculateLayout(
       const isPastOrActive = i < activeStepIndex;
       const isCurrent = i === activeStepIndex - 1;
 
+      // Clean, short label on the canvas pill (under 20 chars) to prevent line crowding
+      const pillLabel = step.dataPassed
+        ? step.dataPassed.length > 20
+          ? step.dataPassed.slice(0, 18) + '…'
+          : step.dataPassed
+        : `Step ${step.stepNumber} → ${nextStep.stepNumber}`;
+
       edges.push({
         id: `trace-edge-${i}`,
         from: step.activeNodeId,
-        to: step.targetNodeId || nextStep.activeNodeId,
-        label: `Ch.${step.stepNumber} → Ch.${nextStep.stepNumber}`,
-        dataPassed: step.description,
+        to: nextStep.activeNodeId, // Always connects to next step forward
+        label: pillLabel,
+        dataPassed: step.dataPassed || step.description,
         whatHappens: step.storybook?.story || step.description,
+        codeSnippet: step.codeLine,
         type: 'event',
         isActive: isCurrent || isPastOrActive,
         animated: false,
       });
     }
 
+    // Idle files placed well below the active pipeline (y = 520) in a clean 4-column shelf
     const idleFiles = files.filter((f) => !uniqueIds.includes(f.id));
-    const IDLE_COLS = 3;
-    const IDLE_WIDTH = 240;
-    const IDLE_HEIGHT = 90;
+    const IDLE_COLS = 4;
+    const IDLE_WIDTH = 250;
+    const IDLE_HEIGHT = 85;
 
     idleFiles.forEach((file, idx) => {
       const col = idx % IDLE_COLS;
@@ -96,8 +106,8 @@ export function calculateLayout(
         outbound: file.flowExplanation?.outbound,
         routes: file.routes,
         dataEntities: file.dataEntities,
-        x: 80 + col * (IDLE_WIDTH + 30),
-        y: 480 + row * (IDLE_HEIGHT + 25),
+        x: 80 + col * (IDLE_WIDTH + 45),
+        y: 520 + row * (IDLE_HEIGHT + 24),
         width: IDLE_WIDTH,
         height: IDLE_HEIGHT,
         label: file.name,
@@ -134,9 +144,9 @@ export function calculateLayout(
   });
 
   columns.forEach((colFiles, colIdx) => {
-    const colX = 60 + colIdx * (NODE_WIDTH + GAP_X);
+    const colX = 80 + colIdx * (NODE_WIDTH + GAP_X);
     colFiles.forEach((file, rowIdx) => {
-      const nodeY = 80 + rowIdx * (NODE_HEIGHT + GAP_Y);
+      const nodeY = 90 + rowIdx * (NODE_HEIGHT + GAP_Y);
 
       nodes.push({
         id: file.id,
@@ -177,13 +187,20 @@ export function calculateLayout(
         const key = `${src.id}->${tgt.id}`;
         if (!edgeSet.has(key)) {
           edgeSet.add(key);
+
+          const shortLabel = conn.dataPassed
+            ? conn.dataPassed.length > 20
+              ? conn.dataPassed.slice(0, 18) + '…'
+              : conn.dataPassed
+            : 'calls';
+
           edges.push({
             id: `edge-${src.id}-${tgt.id}`,
             from: src.id,
             to: tgt.id,
             fromName: src.name,
             toName: tgt.name,
-            label: conn.dataPassed || 'calls',
+            label: shortLabel,
             dataPassed: conn.dataPassed,
             whatHappens: conn.whatHappens,
             codeSnippet: conn.codeSnippet,
@@ -205,10 +222,7 @@ export function calculateLayout(
 
       const srcRole = src.pipelineRole;
       const tgtRole = tgt.pipelineRole;
-      const srcName = src.name.toLowerCase().replace(/\.[^.]+$/, '');
-      const tgtName = tgt.name.toLowerCase().replace(/\.[^.]+$/, '');
 
-      // Check domain match across directories (e.g. templates/auth/login.html -> internal/auth/handler.go)
       const srcDomain = src.path.toLowerCase().includes('auth') ? 'auth' : src.path.toLowerCase().includes('product') ? 'product' : src.path.toLowerCase().includes('order') || src.path.toLowerCase().includes('cart') ? 'order' : '';
       const tgtDomain = tgt.path.toLowerCase().includes('auth') ? 'auth' : tgt.path.toLowerCase().includes('product') ? 'product' : tgt.path.toLowerCase().includes('order') || tgt.path.toLowerCase().includes('cart') ? 'order' : '';
 
@@ -223,8 +237,8 @@ export function calculateLayout(
           to: tgt.id,
           fromName: src.name,
           toName: tgt.name,
-          label: 'POST form data',
-          dataPassed: 'Dispatches HTTP request payload',
+          label: 'POST /form',
+          dataPassed: 'Form submit payload',
           whatHappens: `${src.name} sends user action to ${tgt.name} controller.`,
           type: 'data',
         });
@@ -239,8 +253,8 @@ export function calculateLayout(
           to: tgt.id,
           fromName: src.name,
           toName: tgt.name,
-          label: 'calls domain service',
-          dataPassed: 'Passes validated input data',
+          label: 'calls service',
+          dataPassed: 'Validated domain input',
           whatHappens: `${src.name} delegates business logic to ${tgt.name}.`,
           type: 'data',
         });
@@ -255,8 +269,8 @@ export function calculateLayout(
           to: tgt.id,
           fromName: src.name,
           toName: tgt.name,
-          label: 'executes SQL query',
-          dataPassed: 'SQL query params & entities',
+          label: 'SQL query',
+          dataPassed: 'SQL parameters & entities',
           whatHappens: `${src.name} calls database repository ${tgt.name} to persist or read records.`,
           type: 'data',
         });

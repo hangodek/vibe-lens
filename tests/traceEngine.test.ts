@@ -114,4 +114,50 @@ describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
     expect(edges[0].whatHappens).toContain('Visitor submits email & password');
     expect(edges[0].codeSnippet).toContain('HandleFunc');
   });
+
+  it('aligns all trace steps horizontally on a clean baseline with wide spacing', () => {
+    const files = [
+      parseSourceCode('web/templates/auth/login.html', '<form>'),
+      parseSourceCode('internal/shared/middleware/auth.go', 'func M() {}'),
+      parseSourceCode('internal/auth/handler.go', 'func H() {}'),
+      parseSourceCode('internal/auth/service.go', 'func S() {}'),
+      parseSourceCode('internal/auth/repository.go', 'func R() {}'),
+    ];
+
+    const trace = {
+      id: 'trace-login',
+      title: 'Login Flow',
+      triggerLabel: 'Submit',
+      description: 'Login',
+      steps: [
+        { id: 's1', stepNumber: 1, title: 'Input', description: 'Input', activeNodeId: files[0].id, targetNodeId: files[1].id },
+        { id: 's2', stepNumber: 2, title: 'Guard', description: 'Guard', activeNodeId: files[1].id, targetNodeId: files[2].id },
+        { id: 's3', stepNumber: 3, title: 'Handler', description: 'Handler', activeNodeId: files[2].id, targetNodeId: files[3].id },
+        { id: 's4', stepNumber: 4, title: 'Service', description: 'Service', activeNodeId: files[3].id, targetNodeId: files[4].id },
+        { id: 's5', stepNumber: 5, title: 'Repo', description: 'Repo', activeNodeId: files[4].id },
+      ],
+    };
+
+    const { nodes, edges } = calculateLayout(files, 'trace', trace, 0);
+
+    // Verify all trace steps share identical baseline Y coordinate (straight horizontal line)
+    const traceNodes = nodes.filter((n) => n.badge !== 'Idle');
+    expect(traceNodes.length).toBe(5);
+    const baselineY = traceNodes[0].y;
+    expect(baselineY).toBe(190);
+    traceNodes.forEach((n) => expect(n.y).toBe(baselineY));
+
+    // Verify spacing between each consecutive node is >= 200px
+    for (let i = 0; i < traceNodes.length - 1; i++) {
+      const gap = traceNodes[i + 1].x - (traceNodes[i].x + traceNodes[i].width);
+      expect(gap).toBeGreaterThanOrEqual(200);
+    }
+
+    // Verify all edges travel strictly left-to-right (fromNode.x < toNode.x)
+    edges.forEach((edge) => {
+      const src = traceNodes.find((n) => n.id === edge.from)!;
+      const tgt = traceNodes.find((n) => n.id === edge.to)!;
+      expect(tgt.x).toBeGreaterThan(src.x);
+    });
+  });
 });

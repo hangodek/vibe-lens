@@ -54,7 +54,7 @@ export async function executeAIPrompt(prompt: string, config?: AIConfig): Promis
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tool: cfg.cliTool || 'agy',
+          tool: cfg.cliTool || 'opencode',
           prompt,
         }),
       });
@@ -70,7 +70,7 @@ export async function executeAIPrompt(prompt: string, config?: AIConfig): Promis
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        tool: cfg.cliTool || 'agy',
+        tool: cfg.cliTool || 'opencode',
         prompt,
       }),
     });
