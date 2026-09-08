@@ -172,5 +172,9 @@ export interface VibeProject {
     whatHappens: string;
     dataPassed: string;
     codeSnippet?: string;
+    callerFunction?: string;
+    targetFunction?: string;
+    parametersPassed?: string;
+    whyCalled?: string;
   }>;
 }

@@ -111,7 +111,11 @@ Return ONLY a valid JSON object matching this exact schema:
       "to": "target file path",
       "whatHappens": "What occurs between them (e.g. Visitor enters credentials and submits form)",
       "dataPassed": "Short label (under 20 chars, e.g. POST /login)",
-      "codeSnippet": "Key code line linking them"
+      "callerFunction": "Function or element in source file e.g. <form action='/login'>",
+      "targetFunction": "Function invoked in target e.g. Login(w, r)",
+      "parametersPassed": "Parameters passed with types e.g. email (string), password (string)",
+      "whyCalled": "Why target is called e.g. To check bcrypt password hash against database",
+      "codeSnippet": "Key code line linking them e.g. h.service.Authenticate(email, password)"
     }
   ],
   "journeys": [

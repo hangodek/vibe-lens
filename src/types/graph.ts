@@ -38,6 +38,10 @@ export interface CanvasEdge {
   dataPassed?: string;
   whatHappens?: string;
   codeSnippet?: string;
+  callerFunction?: string;
+  targetFunction?: string;
+  parametersPassed?: string;
+  whyCalled?: string;
   type: 'render' | 'data' | 'api' | 'event';
   isActive?: boolean;
   animated?: boolean;

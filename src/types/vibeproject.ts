@@ -13,11 +13,15 @@ export interface VibeDataStructure {
 }
 
 export interface VibeMasterConnection {
-  from: string;         // source file path e.g. "web/templates/auth/login.html"
-  to: string;           // target file path e.g. "internal/auth/handler.go"
-  whatHappens: string;  // e.g. "Visitor submits email and password credentials"
-  dataPassed: string;   // e.g. "POST /login (email, password form payload)"
-  codeSnippet?: string; // Key code call e.g. "authService.Authenticate(email, password)"
+  from: string;             // source file path e.g. "web/templates/auth/login.html"
+  to: string;               // target file path e.g. "internal/auth/handler.go"
+  whatHappens: string;      // e.g. "Visitor submits email and password credentials"
+  dataPassed: string;       // e.g. "POST /login (email, password form payload)"
+  codeSnippet?: string;     // Key code call e.g. "authService.Authenticate(email, password)"
+  callerFunction?: string;  // Function in source file e.g. "<form action='/login'>"
+  targetFunction?: string;  // Function invoked in target e.g. "Login(w, r)"
+  parametersPassed?: string;// Detailed parameters with types e.g. "email (string), password (string)"
+  whyCalled?: string;       // Architectural reason e.g. "To verify password hash with bcrypt against database"
 }
 
 export interface VibeMasterFile {
