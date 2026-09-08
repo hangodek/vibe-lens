@@ -54,7 +54,7 @@ export function FileExplorer({
             {folderFiles.map((file) => {
               const isSelected = file.id === selectedFileId;
               const Icon = TYPE_ICONS[file.type] || FileCode;
-              const style = NODE_TYPE_STYLES[file.type];
+              const style = NODE_TYPE_STYLES[file.type] || NODE_TYPE_STYLES.component;
 
               return (
                 <button

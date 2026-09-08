@@ -46,13 +46,20 @@ export function AIAssistantDrawer({
     setInput('');
     setIsThinking(true);
 
-    const groqKey = localStorage.getItem('vibe_key_groq');
-    const openAiKey = localStorage.getItem('vibe_key_openai');
-    const anthropicKey = localStorage.getItem('vibe_key_anthropic');
-    const geminiKey = localStorage.getItem('vibe_key_gemini');
-    const localUrl = localStorage.getItem('vibe_local_url') || 'http://localhost:4242';
-    const cliTool = localStorage.getItem('vibe_cli_tool') || 'agy';
-    const activeProvider = localStorage.getItem('vibe_ai_provider') || 'local_cli';
+    const readStored = (key: string): string | null => {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    };
+    const groqKey = readStored('vibe_key_groq');
+    const openAiKey = readStored('vibe_key_openai');
+    const anthropicKey = readStored('vibe_key_anthropic');
+    const geminiKey = readStored('vibe_key_gemini');
+    const localUrl = readStored('vibe_local_url') || 'http://localhost:4242';
+    const cliTool = readStored('vibe_cli_tool') || 'agy';
+    const activeProvider = readStored('vibe_ai_provider') || 'local_cli';
 
     // 1. Check Local CLI Agent via Embedded Vite / Companion Server
     if (activeProvider === 'local_cli') {
@@ -60,7 +67,7 @@ export function AIAssistantDrawer({
         tool: cliTool,
         file: file.path,
         question: queryText,
-        code: file.code.slice(0, 4000),
+        code: (file.code ?? '').slice(0, 4000),
       });
 
       // Try embedded Vite endpoint first
@@ -100,7 +107,7 @@ export function AIAssistantDrawer({
       }
     }
 
-    const systemPrompt = `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path} (${file.pipelineRole || 'module'}). Code: \`\`\`${file.code.slice(0, 3000)}\`\`\``;
+    const systemPrompt = `You are an elite software architect explaining code to a vibe coder in simple, jargon-free English. File: ${file.path} (${file.pipelineRole || 'module'}). Code: \`\`\`${(file.code ?? '').slice(0, 3000)}\`\`\``;
 
     // 2. Cloud Providers (Groq / OpenAI / Anthropic / Gemini)
     if (activeProvider === 'anthropic' && anthropicKey) {
@@ -120,6 +127,7 @@ export function AIAssistantDrawer({
             messages: [{ role: 'user', content: queryText }],
           }),
         });
+        if (!res.ok) throw new Error(`Anthropic returned ${res.status}`);
         const data = await res.json();
         const reply = data.content?.[0]?.text;
         if (reply) {
@@ -127,8 +135,12 @@ export function AIAssistantDrawer({
           setIsThinking(false);
           return;
         }
+        throw new Error('Anthropic returned an empty reply');
       } catch (e) {
         console.warn('Anthropic error', e);
+        setMessages((prev) => [...prev, { role: 'assistant', content: `Anthropic request failed: ${(e as Error)?.message || 'unknown error'}. Check your API key in AI settings.` }]);
+        setIsThinking(false);
+        return;
       }
     }
 
@@ -154,6 +166,7 @@ export function AIAssistantDrawer({
             messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: queryText }],
           }),
         });
+        if (!res.ok) throw new Error(`AI endpoint returned ${res.status}`);
         const data = await res.json();
         const reply = data.choices?.[0]?.message?.content;
         if (reply) {
@@ -161,28 +174,18 @@ export function AIAssistantDrawer({
           setIsThinking(false);
           return;
         }
+        throw new Error('AI endpoint returned an empty reply');
       } catch (e) {
-        console.warn('AI endpoint error, falling back to deterministic engine', e);
+        console.warn('AI endpoint error', e);
+        setMessages((prev) => [...prev, { role: 'assistant', content: `AI request failed: ${(e as Error)?.message || 'unknown error'}. No AI provider is configured or reachable — open AI settings (key icon, top right) and connect a CLI agent or API key.` }]);
+        setIsThinking(false);
+        return;
       }
     }
 
-    // 2. Deterministic Semantic Heuristic Engine (100% Offline & Free)
-    setTimeout(() => {
-      let reply = '';
-      const low = queryText.toLowerCase();
-
-      if (low.includes('interact') || low.includes('workflow') || low.includes('pipeline')) {
-        const exp = file.flowExplanation;
-        reply = `**Pipeline Role: ${file.pipelineRole?.toUpperCase() || 'MODULE'}**\n\n• **Inbound:** ${exp?.inbound || 'Receives data from parent callers.'}\n• **Processing:** ${exp?.processing || file.description}\n• **Outbound:** ${exp?.outbound || 'Passes results to downstream callers.'}`;
-      } else if (low.includes('break') || low.includes('invariant') || low.includes('safe')) {
-        reply = `**Critical Invariants for ${file.name}:**\n${file.blastRadius?.safeInvariants.map((i) => `• ${i}`).join('\n') || '• Keep function exports and route parameter names intact.'}\n\nTo edit in Claude Code or Antigravity, copy the CLI directive from the Safety tab!`;
-      } else {
-        reply = `**${file.name}** operates as **${file.pipelineRole || 'a component'}** in your application. It contains ${file.lineCount} lines and exposes ${file.exports.length} public declarations. Ask me about its inputs, outputs, or how it communicates with other files!`;
-      }
-
-      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-      setIsThinking(false);
-    }, 400);
+    // 2. No provider configured — say so honestly instead of faking an answer
+    setMessages((prev) => [...prev, { role: 'assistant', content: `No AI provider is configured for this session. Open AI settings (key icon, top right) and connect a CLI agent (opencode / agy / claude) or add a cloud API key, then ask again.` }]);
+    setIsThinking(false);
   }
 
   return (

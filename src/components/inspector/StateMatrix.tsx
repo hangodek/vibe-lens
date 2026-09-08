@@ -54,7 +54,7 @@ export function StateMatrix({ file }: StateMatrixProps) {
               <span className="text-[#828fff] font-mono">{st.setter}</span>
             </div>
 
-            {st.modifiedBy.length > 0 && (
+            {(st.modifiedBy?.length ?? 0) > 0 && (
               <div className="flex items-center justify-between text-[11px] font-mono text-[#8a8f98]">
                 <span>Accessed By:</span>
                 <span className="text-[#d0d6e0] truncate max-w-[160px]">

@@ -5,8 +5,17 @@ export function enrichProjectWithMaster(
   project: VibeProject,
   master: VibeLensProjectMaster
 ): VibeProject {
+  const normalizePath = (p: string) =>
+    (p || '').replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+
   const pathToIdMap = new Map<string, string>();
-  project.files.forEach((f) => pathToIdMap.set(f.path, f.id));
+  project.files.forEach((f) => {
+    pathToIdMap.set(f.path, f.id);
+    pathToIdMap.set(normalizePath(f.path), f.id);
+  });
+
+  const resolveFileId = (p: string): string | undefined =>
+    pathToIdMap.get(p) ?? pathToIdMap.get(normalizePath(p));
 
   const enrichedFiles: ParsedCodeFile[] = project.files.map((file) => {
     const masterFile = master.files[file.path];
@@ -23,7 +32,7 @@ export function enrichProjectWithMaster(
               setter: `${shape.name} (${shape.kind || 'struct'})`,
               initialValue: f.type || 'field',
               purpose: f.purpose || `Domain entity attribute in ${shape.name}`,
-              modifiedBy: masterFile.calls.slice(0, 3),
+              modifiedBy: masterFile.calls?.slice(0, 3) ?? [],
             });
           }
         }
@@ -52,49 +61,64 @@ export function enrichProjectWithMaster(
       },
       states: states.length > 0 ? states : file.states,
       routes: masterFile.routes && masterFile.routes.length > 0 ? masterFile.routes : file.routes,
-      dataEntities: masterFile.dataShape?.map((s) => s.name) || file.dataEntities,
+      dataEntities: masterFile.dataShape && masterFile.dataShape.length > 0
+        ? masterFile.dataShape.map((s) => s.name)
+        : file.dataEntities,
       focalCode: masterFile.focalCode || file.focalCode,
       focalLine: masterFile.focalLine || file.focalLine,
     };
   });
 
   // Convert AI Journeys into ExecutionTraces
-  let traces: ExecutionTrace[] = project.traces;
-  if (master.journeys && master.journeys.length > 0) {
-    traces = master.journeys.map((journey, jIdx) => {
-      const steps: TraceStep[] = journey.steps.map((step, sIdx) => {
-        const fileId = pathToIdMap.get(step.file) || enrichedFiles[0]?.id || 'step-file';
-        const nextStep = journey.steps[sIdx + 1];
-        const nextFileId = nextStep ? pathToIdMap.get(nextStep.file) : undefined;
+  let traces: ExecutionTrace[] = project.traces ?? [];
+  if (Array.isArray(master.journeys) && master.journeys.length > 0) {
+    const seenIds = new Set<string>();
+    traces = master.journeys
+      .map((journey, jIdx) => {
+        const rawSteps = Array.isArray(journey.steps) ? journey.steps : [];
+        const steps: TraceStep[] = [];
+        rawSteps.forEach((step, sIdx) => {
+          const fileId = resolveFileId(step.file);
+          if (!fileId) {
+            console.warn(`[projectEnricher] journey "${journey.title ?? jIdx}" step path not found in project: ${step.file} — step skipped`);
+            return;
+          }
+          const nextStep = rawSteps
+            .slice(sIdx + 1)
+            .find((s) => resolveFileId(s.file) !== undefined);
+          steps.push({
+            id: `ai-step-${jIdx}-${steps.length}`,
+            stepNumber: steps.length + 1,
+            title: step.action || `Step ${steps.length + 1}`,
+            description: step.action || `Step ${steps.length + 1}`,
+            activeNodeId: fileId,
+            targetNodeId: nextStep ? resolveFileId(nextStep.file) : undefined,
+            lineHighlight: step.lineHighlight,
+            codeLine: step.codeLine,
+            dataPassed: step.dataPassed || step.dataTransformed,
+            codeExplanation: step.codeExplanation,
+            storybook: {
+              chapterNumber: steps.length + 1,
+              chapterTitle: `Step ${steps.length + 1}: ${step.action || step.file}`,
+              story: `[${step.file}] ${step.action || 'executes'}`,
+              humanCausality: step.codeExplanation || step.dataPassed || step.dataTransformed || 'Data flows cleanly through domain boundaries.',
+            },
+          });
+        });
+
+        let id = journey.id || `ai-journey-${jIdx}`;
+        if (seenIds.has(id)) id = `${id}-dup-${jIdx}`;
+        seenIds.add(id);
 
         return {
-          id: `ai-step-${jIdx}-${sIdx}`,
-          stepNumber: sIdx + 1,
-          title: step.action,
-          description: step.action,
-          activeNodeId: fileId,
-          targetNodeId: nextFileId,
-          lineHighlight: step.lineHighlight,
-          codeLine: step.codeLine,
-          dataPassed: step.dataPassed || step.dataTransformed,
-          codeExplanation: step.codeExplanation,
-          storybook: {
-            chapterNumber: sIdx + 1,
-            chapterTitle: `Step ${sIdx + 1}: ${step.action}`,
-            story: `[${step.file}] ${step.action}`,
-            humanCausality: step.codeExplanation || step.dataPassed || step.dataTransformed || 'Data flows cleanly through domain boundaries.',
-          },
+          id,
+          title: journey.title || `Journey ${jIdx + 1}`,
+          triggerLabel: `Journey ${jIdx + 1}`,
+          description: journey.description || journey.title || `Journey ${jIdx + 1}`,
+          steps,
         };
-      });
-
-      return {
-        id: journey.id || `ai-journey-${jIdx}`,
-        title: journey.title,
-        triggerLabel: `Journey ${jIdx + 1}`,
-        description: journey.description,
-        steps,
-      };
-    });
+      })
+      .filter((t) => t.steps.length > 0);
   }
 
   return {
@@ -102,7 +126,9 @@ export function enrichProjectWithMaster(
     framework: master.stack ? `${master.stack} (${enrichedFiles.length} source files)` : project.framework,
     description: master.summary || project.description,
     files: enrichedFiles,
-    traces: traces.length > 0 ? traces : project.traces,
-    connections: master.connections || [],
+    traces: traces.length > 0 ? traces : (project.traces ?? []),
+    connections: Array.isArray(master.connections) && master.connections.length > 0
+      ? master.connections
+      : (project.connections ?? []),
   };
 }

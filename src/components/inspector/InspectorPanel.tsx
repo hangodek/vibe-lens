@@ -3,13 +3,12 @@ import type { ParsedCodeFile } from '../../types/ast';
 import type { CanvasEdge } from '../../types/graph';
 import { CodeSnippetView } from './CodeSnippetView';
 import { AIAssistantDrawer } from './AIAssistantDrawer';
-import { 
-  X, 
-  Sparkles, 
-  Code2, 
-  MessageSquareCode, 
+import {
+  X,
+  Sparkles,
+  Code2,
+  MessageSquareCode,
   FileCode,
-  ArrowRight,
   ShieldCheck,
   Database,
   MapPin,
@@ -70,13 +69,11 @@ export function InspectorPanel({
   const role = file.pipelineRole || 'utility';
   const roleStyle = ROLE_LABELS[role] || ROLE_LABELS.utility;
 
-  // Resolve incoming and outgoing execution chain edges
-  const incoming = connections.filter(
-    (e) => e.to === file.id || (file.path && e.to.includes(file.path))
-  );
-  const outgoing = connections.filter(
-    (e) => e.from === file.id || (file.path && e.from.includes(file.path))
-  );
+  // Resolve incoming and outgoing execution chain edges (exact id/path equality — no substrings)
+  const edgeTargetsFile = (ref: string) =>
+    ref === file.id || (!!file.path && ref === file.path);
+  const incoming = connections.filter((e) => edgeTargetsFile(e.to));
+  const outgoing = connections.filter((e) => edgeTargetsFile(e.from));
 
   const handleAskQuickAi = (q: string) => {
     if (!q.trim()) return;
@@ -198,7 +195,7 @@ export function InspectorPanel({
                 </span>
                 {incoming.length > 0 ? (
                   incoming.map((e) => {
-                    const srcFile = allFiles.find((f) => f.id === e.from || f.path.includes(e.from));
+                    const srcFile = allFiles.find((f) => f.id === e.from || f.path === e.from);
                     return (
                       <div
                         key={e.id}
@@ -259,7 +256,7 @@ export function InspectorPanel({
                 </span>
                 {outgoing.length > 0 ? (
                   outgoing.map((e) => {
-                    const tgtFile = allFiles.find((f) => f.id === e.to || f.path.includes(e.to));
+                    const tgtFile = allFiles.find((f) => f.id === e.to || f.path === e.to);
                     return (
                       <div
                         key={e.id}
@@ -323,7 +320,7 @@ export function InspectorPanel({
             </div>
 
             {/* Data Shape & State Variables */}
-            {file.states.length > 0 && (
+            {(file.states?.length ?? 0) > 0 && (
               <div className="bg-[#0e1015] border border-[#23252a] rounded-xl p-3 space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-mono text-[#34d399] uppercase font-semibold">
                   <Database className="w-3.5 h-3.5" />

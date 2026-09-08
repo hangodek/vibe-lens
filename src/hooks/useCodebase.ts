@@ -38,8 +38,10 @@ export function useCodebase() {
     return detectWorkspaces(allFiles);
   }, [allFiles]);
 
-  // When project changes, set initial workspace
+  // When project changes (or workspaces appear/disappear), ensure the active
+  // workspace still exists; fall back to the first feature domain otherwise
   useEffect(() => {
+    if (workspaces.find((w) => w.id === activeWorkspaceId)) return;
     if (workspaces.length > 1) {
       // Pick first feature domain (e.g. Auth or Product, skipping 'all' as default)
       const firstFeature = workspaces.find((w) => w.id !== 'all' && w.id !== 'root') || workspaces[0];
@@ -47,7 +49,7 @@ export function useCodebase() {
     } else {
       setActiveWorkspaceId('all');
     }
-  }, [activeProject.id]);
+  }, [activeProject.id, workspaces, activeWorkspaceId]);
 
   // Workspace-Isolated Files: Canvas ONLY loads nodes belonging to active workspace
   const displayedFiles = useMemo(() => {
@@ -55,7 +57,7 @@ export function useCodebase() {
       if (viewScope === 'all' || allFiles.length <= 8) return allFiles;
       const core = allFiles.filter((f) => {
         if (f.type === 'page' || f.type === 'layout' || f.type === 'store' || f.type === 'api') return true;
-        if (f.states.length > 0 || f.apiCalls.length > 0 || f.renderedChildren.length > 0) return true;
+        if ((f.states?.length ?? 0) > 0 || (f.apiCalls?.length ?? 0) > 0 || (f.renderedChildren?.length ?? 0) > 0) return true;
         return false;
       });
       return core.length >= 3 ? core : allFiles;
@@ -73,6 +75,8 @@ export function useCodebase() {
     setActiveProject(project);
     setCustomFiles([]);
     setSelectedFileId(project.files[0]?.id || null);
+    setActiveTraceIndex(0);
+    setActiveTraceId(project.traces?.[0]?.id || '');
   };
 
   const loadCustomProject = (project: VibeProject) => {
@@ -80,6 +84,8 @@ export function useCodebase() {
     setActiveProject(project);
     setCustomFiles([]);
     setSelectedFileId(project.files[0]?.id || null);
+    setActiveTraceIndex(0);
+    setActiveTraceId(project.traces?.[0]?.id || '');
   };
 
   const addCustomFile = (newFile: ParsedCodeFile) => {
@@ -87,17 +93,21 @@ export function useCodebase() {
     setSelectedFileId(newFile.id);
   };
 
-  const currentTrace = activeProject.traces.find((t) => t.id === activeTraceId) || activeProject.traces[0];
+  const projectTraces = activeProject.traces ?? [];
+  const currentTrace = projectTraces.find((t) => t.id === activeTraceId) || projectTraces[0];
+  const clampedTraceIndex = currentTrace
+    ? Math.min(activeTraceIndex, Math.max(0, currentTrace.steps.length - 1))
+    : 0;
 
   const { nodes, edges } = useMemo(() => {
     return calculateLayout(
       displayedFiles,
       layerMode,
       currentTrace,
-      activeTraceIndex,
+      clampedTraceIndex,
       activeProject.connections
     );
-  }, [displayedFiles, layerMode, currentTrace, activeTraceIndex, activeProject.connections]);
+  }, [displayedFiles, layerMode, currentTrace, clampedTraceIndex, activeProject.connections]);
 
   const allProjects = useMemo(() => {
     return [...customProjects, ...PRESET_PROJECTS];

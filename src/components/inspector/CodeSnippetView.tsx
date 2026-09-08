@@ -11,7 +11,7 @@ export function CodeSnippetView({ file, highlightLine }: CodeSnippetViewProps) {
   const [copied, setCopied] = useState(false);
   const [showFullCode, setShowFullCode] = useState(false);
 
-  const lines = file.code.split('\n');
+  const lines = (file.code ?? '').split('\n');
 
   // Compute focal lines (either from AI focalLine, highlightLine prop, or first function line)
   const targetLine = highlightLine || file.focalLine || 1;

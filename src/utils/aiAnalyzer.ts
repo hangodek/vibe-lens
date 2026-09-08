@@ -151,8 +151,12 @@ export async function analyzeProjectWithAI(
   if (!forceRescan) {
     const cached = await loadProjectMaster(projectId);
     if (cached && Object.keys(cached.files || {}).length > 0) {
-      if (onProgress) onProgress({ message: 'Loaded verified mental model from cache', percent: 100 });
-      return cached;
+      const cachedPaths = new Set(Object.keys(cached.files));
+      const allCovered = rawFiles.every((f) => cachedPaths.has(f.path));
+      if (allCovered) {
+        if (onProgress) onProgress({ message: 'Loaded verified mental model from cache', percent: 100 });
+        return cached;
+      }
     }
   }
 
@@ -243,9 +247,9 @@ export async function analyzeProjectWithAI(
     analyzedAt: new Date().toISOString(),
     analyzer: 'opencode',
     files: fileMap,
-    connections: parsed.connections || [],
-    journeys: parsed.journeys || [],
-    workspaces: parsed.workspaces || [],
+    connections: Array.isArray(parsed.connections) ? parsed.connections : [],
+    journeys: Array.isArray(parsed.journeys) ? parsed.journeys : [],
+    workspaces: Array.isArray(parsed.workspaces) ? parsed.workspaces : [],
   };
 
   await saveProjectMaster(master);

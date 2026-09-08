@@ -309,7 +309,7 @@ export function synthesizeUserJourneys(files: ParsedCodeFile[]): ExecutionTrace[
   }
 
   // 3. JOURNEY: SHOPPING & CART FLOW
-  const cartView = findFile((p) => p.includes('cart') || p.includes('product') && p.endsWith('.html'));
+  const cartView = findFile((p) => (p.includes('cart') || p.includes('product')) && p.endsWith('.html'));
   const cartScript = findFile((p) => (p.includes('cart') || p.includes('home')) && p.endsWith('.js'));
   const orderHandler = findFile((p) => p.includes('order') && (p.includes('handler') || p.includes('route')));
 

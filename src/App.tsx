@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCodebase } from './hooks/useCodebase';
 import { useExecutionTrace } from './hooks/useExecutionTrace';
 import { StudioHeader } from './components/header/StudioHeader';
@@ -56,7 +56,7 @@ export function App() {
   const [pendingProject, setPendingProject] = useState<VibeProject | null>(null);
 
   // Execution Trace stepper controls
-  const trace = useExecutionTrace(activeProject.traces);
+  const trace = useExecutionTrace(activeProject.traces ?? []);
 
   // Synchronize trace step index with layout engine
   useEffect(() => {
@@ -75,8 +75,10 @@ export function App() {
     }
   }, [layerMode, trace.currentStep, setSelectedFileId]);
 
-  // AI Pipeline Runner
+  // AI Pipeline Runner — guarded against stale completions from earlier ingests
+  const analysisRunId = useRef(0);
   const runAIAnalysis = async (project: VibeProject, force = false) => {
+    const runId = ++analysisRunId.current;
     setIsAnalyzing(true);
     setAnalysisProgress({ message: 'Initiating AI codebase analysis...', percent: 5 });
 
@@ -92,18 +94,24 @@ export function App() {
         project.id,
         project.name,
         rawFiles,
-        (p) => setAnalysisProgress(p),
+        (p) => {
+          if (analysisRunId.current === runId) setAnalysisProgress(p);
+        },
         force
       );
 
+      if (analysisRunId.current !== runId) return;
       const enriched = enrichProjectWithMaster(project, master);
       loadCustomProject(enriched);
     } catch (err: any) {
+      if (analysisRunId.current !== runId) return;
       console.warn('AI analysis error, loading base project:', err?.message);
       loadCustomProject(project);
     } finally {
-      setIsAnalyzing(false);
-      setPendingProject(null);
+      if (analysisRunId.current === runId) {
+        setIsAnalyzing(false);
+        setPendingProject(null);
+      }
     }
   };
 
