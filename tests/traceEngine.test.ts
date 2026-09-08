@@ -115,6 +115,46 @@ describe('traceEngine - Collision-Free Layout & Clean Pipelines', () => {
     expect(edges[0].codeSnippet).toContain('HandleFunc');
   });
 
+  it('merges AI edges with heuristic gap-filling instead of leaving files edgeless', () => {
+    const files = [
+      parseSourceCode('web/templates/auth/login.html', '<form action="/login">'),
+      parseSourceCode('internal/shared/middleware/auth.go', 'func RequireAuth(next http.HandlerFunc) http.HandlerFunc { return next; }'),
+      parseSourceCode('internal/auth/handler.go', 'func Login() {}'),
+      parseSourceCode('internal/auth/service.go', 'func Authenticate() {}'),
+    ];
+
+    // AI only covered the Guard -> Controller pair; heuristics must wire the rest.
+    const aiConnections = [
+      {
+        from: 'internal/shared/middleware/auth.go',
+        to: 'internal/auth/handler.go',
+        whatHappens: 'Passes verified request downstream',
+        dataPassed: 'Validated context',
+      },
+    ];
+
+    const { edges } = calculateLayout(files, 'screen', undefined, 0, aiConnections);
+    const keyed = new Set(edges.map((e) => `${e.from}->${e.to}`));
+    const login = files[0].id;
+    const guard = files[1].id;
+    const handler = files[2].id;
+    const service = files[3].id;
+
+    // AI pair preserved …
+    expect(keyed.has(`${guard}->${handler}`)).toBe(true);
+    // … heuristic gap-fills View -> Guard and Controller -> Service …
+    expect(keyed.has(`${login}->${guard}`)).toBe(true);
+    expect(keyed.has(`${handler}->${service}`)).toBe(true);
+    // … and does NOT add a duplicate View -> Controller bypass over the guard path.
+    expect(keyed.has(`${login}->${handler}`)).toBe(false);
+
+    // Every non-gateway node has at least one incoming edge (nobody sits edgeless).
+    const targets = new Set(edges.map((e) => e.to));
+    expect(targets.has(guard)).toBe(true);
+    expect(targets.has(handler)).toBe(true);
+    expect(targets.has(service)).toBe(true);
+  });
+
   it('aligns all trace steps horizontally on a clean baseline with wide spacing', () => {
     const files = [
       parseSourceCode('web/templates/auth/login.html', '<form>'),

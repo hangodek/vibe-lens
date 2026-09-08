@@ -184,8 +184,10 @@ export function calculateLayout(
   // 3. PIPELINE EDGE RESOLVER: Connects nodes & labels what data is passed
   const edgeSet = new Set<string>();
 
-  // A. If AI provided verified connections, use them strictly (Zero duplicate guessing!)
-  if (connections && connections.length > 0) {
+  // A. AI-verified connections first — then heuristics fill gaps for pairs
+  // the AI missed (no early return: uncovered files would otherwise sit edgeless)
+  const hasAiConnections = !!(connections && connections.length > 0);
+  if (hasAiConnections) {
     const resolveConnectionFile = (ref: string) => {
       if (!ref) return undefined;
       const exact = files.find((f) => f.path === ref);
@@ -236,21 +238,13 @@ export function calculateLayout(
       }
     });
 
-    return { nodes, edges };
+    // No early return: fall through to heuristics to wire pairs the AI missed.
   }
 
-  // B. Fallback Heuristics (Only runs when AI connections have not yet been generated)
-  // Pre-calculate which domains have security guards to prevent duplicate bypass lines!
-  const domainsWithGuards = new Set<string>();
-  files.forEach((f) => {
-    if (f.pipelineRole === 'guard') {
-      const p = f.path.toLowerCase();
-      if (p.includes('auth')) domainsWithGuards.add('auth');
-      if (p.includes('product')) domainsWithGuards.add('product');
-      if (p.includes('order') || p.includes('cart')) domainsWithGuards.add('order');
-    }
-  });
-
+  // B. Heuristic pipeline linkages fill gaps the AI missed. Pairs already
+  // claimed by AI edges are skipped via edgeSet. The View->Controller direct
+  // edge is skipped when THIS source view already routes through a guard
+  // (checked against edges claimed so far — prevents duplicate corridors).
   files.forEach((src) => {
     files.forEach((tgt) => {
       if (src.id === tgt.id) return;
@@ -330,20 +324,33 @@ export function calculateLayout(
         });
       }
 
-      // 5. View -> Controller (Direct ONLY if NO guard exists for this domain! Zero duplicate bypass!)
-      else if (isDomainMatch && !domainsWithGuards.has(srcDomain) && (srcRole === 'view' || src.type === 'page') && (tgtRole === 'controller' || tgt.path.includes('handler'))) {
-        edgeSet.add(key);
-        edges.push({
-          id: `edge-${src.id}-${tgt.id}`,
-          from: src.id,
-          to: tgt.id,
-          fromName: src.name,
-          toName: tgt.name,
-          label: 'POST /form',
-          dataPassed: 'Form submit payload',
-          whatHappens: `${src.name} sends user action directly to ${tgt.name} controller.`,
-          type: 'data',
+      // 5. View -> Controller direct edge — but ONLY when this source view does
+      // NOT already route through a guard (checked against edges claimed so far,
+      // AI or heuristic). Kills the duplicate-corridor overlap without leaving
+      // guard-less views disconnected.
+      else if (isDomainMatch && (srcRole === 'view' || src.type === 'page') && (tgtRole === 'controller' || tgt.path.includes('handler'))) {
+        const routesViaGuard = [...edgeSet].some((k) => {
+          const [fromId, toId] = k.split('->');
+          if (fromId !== src.id) return false;
+          const hop = files.find((f) => f.id === toId);
+          return hop?.pipelineRole === 'guard';
         });
+        if (routesViaGuard) {
+          // Skip: View -> Guard -> Controller already covers this path.
+        } else {
+          edgeSet.add(key);
+          edges.push({
+            id: `edge-${src.id}-${tgt.id}`,
+            from: src.id,
+            to: tgt.id,
+            fromName: src.name,
+            toName: tgt.name,
+            label: 'POST /form',
+            dataPassed: 'Form submit payload',
+            whatHappens: `${src.name} sends user action directly to ${tgt.name} controller.`,
+            type: 'data',
+          });
+        }
       }
 
       // 6. Controller -> Service (auth/handler.go -> auth/service.go)
