@@ -200,7 +200,13 @@ export function App() {
         {isInspectorOpen && (
           <InspectorPanel
             file={selectedFile}
+            allFiles={allFiles}
+            connections={edges}
             highlightLine={layerMode === 'trace' ? trace.currentStep?.lineHighlight : undefined}
+            onSelectFile={(id) => {
+              setSelectedFileId(id);
+              setIsInspectorOpen(true);
+            }}
             onClose={() => setIsInspectorOpen(false)}
             onOpenScreenLocator={() => setIsScreenLocatorOpen(true)}
           />
