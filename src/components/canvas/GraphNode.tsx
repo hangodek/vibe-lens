@@ -32,6 +32,44 @@ const ROLE_STYLES: Record<string, { label: string; badgeBg: string; badgeColor: 
   utility: { label: 'UTILITY', badgeBg: '#4b556322', badgeColor: '#9ca3af', border: '#4b556355', iconColor: '#9ca3af' },
 };
 
+function formatNodeAction(node: CanvasNode): { method: string; target: string; isPost: boolean; isSql: boolean; isGuard: boolean } {
+  if (node.routes && node.routes.length > 0) {
+    const raw = node.routes[0].trim();
+    const parts = raw.split(' ');
+    if (parts.length >= 2) {
+      const method = parts[0].toUpperCase();
+      const target = parts.slice(1).join(' ');
+      return {
+        method,
+        target,
+        isPost: method === 'POST' || method === 'PUT' || method === 'DELETE' || method === 'PATCH',
+        isSql: false,
+        isGuard: false,
+      };
+    }
+    return { method: 'ROUTE', target: raw, isPost: true, isSql: false, isGuard: false };
+  }
+
+  const role = node.role || (node.type === 'page' ? 'view' : node.type === 'api' ? 'controller' : node.type === 'store' ? 'storage' : node.type === 'hook' ? 'service' : 'utility');
+  if (role === 'storage') {
+    const entity = node.dataEntities?.[0] || node.name.replace(/\.[^.]+$/, '');
+    return { method: 'SQL', target: entity, isPost: false, isSql: true, isGuard: false };
+  }
+  if (role === 'guard') {
+    return { method: 'GUARD', target: node.name.replace(/\.[^.]+$/, ''), isPost: false, isSql: false, isGuard: true };
+  }
+  if (role === 'service') {
+    return { method: 'SERVICE', target: node.name.replace(/\.[^.]+$/, ''), isPost: false, isSql: false, isGuard: false };
+  }
+  if (role === 'view') {
+    return { method: 'VIEW', target: node.name.replace(/\.[^.]+$/, ''), isPost: false, isSql: false, isGuard: false };
+  }
+  if (role === 'script') {
+    return { method: 'SCRIPT', target: node.name.replace(/\.[^.]+$/, ''), isPost: false, isSql: false, isGuard: false };
+  }
+  return { method: 'UNIT', target: node.name, isPost: false, isSql: false, isGuard: false };
+}
+
 function GraphNodeComponent({
   node,
   isSelected,
@@ -41,6 +79,7 @@ function GraphNodeComponent({
 }: GraphNodeProps) {
   const roleKey = node.role || (node.type === 'page' ? 'view' : node.type === 'api' ? 'controller' : node.type === 'store' ? 'storage' : node.type === 'hook' ? 'service' : 'utility');
   const roleStyle = ROLE_STYLES[roleKey] || ROLE_STYLES.utility;
+  const action = formatNodeAction(node);
 
   const IconComponent = roleKey === 'view' ? Globe : roleKey === 'storage' ? Database : roleKey === 'guard' ? ShieldAlert : roleKey === 'controller' ? Route : roleKey === 'service' ? Cpu : Boxes;
 
@@ -118,23 +157,23 @@ function GraphNodeComponent({
           </p>
         </div>
 
-        {/* Action / Route / Data Entity Pill */}
-        {node.routes && node.routes.length > 0 ? (
-          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center gap-1.5 text-[10px] font-mono text-[#fb7185] truncate shrink-0">
-            <Route className="w-3 h-3 shrink-0 text-[#fb7185]" />
-            <span className="truncate font-semibold">{node.routes[0]}</span>
-          </div>
-        ) : node.dataEntities && node.dataEntities.length > 0 ? (
-          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center gap-1.5 text-[10px] font-mono text-[#34d399] truncate shrink-0">
-            <Database className="w-3 h-3 shrink-0 text-[#34d399]" />
-            <span className="truncate">{node.dataEntities[0]}</span>
-          </div>
-        ) : (
-          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center justify-between text-[10px] font-mono text-[#8a8f98] shrink-0">
-            <span className="truncate">{node.path || node.name}</span>
-            <ArrowRight className="w-3 h-3 text-[#5e6ad2] shrink-0" />
-          </div>
-        )}
+        {/* Consistent Standardized Action / Method Pill */}
+        <div className="bg-[#101217] border border-[#23252a] rounded px-2 py-1 flex items-center gap-1.5 text-[10px] font-mono truncate shrink-0">
+          <span
+            className={`px-1.5 py-0.2 rounded text-[9px] font-bold tracking-wider uppercase border shrink-0 ${
+              action.isPost
+                ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                : action.isSql
+                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                : action.isGuard
+                ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                : 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30'
+            }`}
+          >
+            {action.method}
+          </span>
+          <span className="truncate text-[#f7f8f8] font-medium">{action.target}</span>
+        </div>
       </div>
 
       {/* 3. Dedicated Footer Bar: Inbound -> Outbound metrics cleanly contained INSIDE card */}

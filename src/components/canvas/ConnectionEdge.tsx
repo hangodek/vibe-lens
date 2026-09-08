@@ -34,6 +34,27 @@ function getCubicBezierPoint(
   return { x: Math.round(x), y: Math.round(y) };
 }
 
+function parseEdgePill(text: string): { method: string; detail: string; color: string; border: string } {
+  const clean = text.trim();
+  const upper = clean.toUpperCase();
+  if (upper.startsWith('POST')) {
+    return { method: 'POST', detail: clean.slice(4).trim() || '/action', color: '#fb7185', border: '#fb718566' };
+  }
+  if (upper.startsWith('GET')) {
+    return { method: 'GET', detail: clean.slice(3).trim() || '/route', color: '#34d399', border: '#34d39966' };
+  }
+  if (upper.startsWith('SQL') || upper.includes('QUERY')) {
+    return { method: 'SQL', detail: clean.replace(/SQL|query/i, '').trim() || 'db', color: '#34d399', border: '#05966966' };
+  }
+  if (upper.includes('GUARD') || upper.includes('MIDDLEWARE') || upper.includes('AUTH') || upper.includes('CONTEXT')) {
+    return { method: 'GUARD', detail: clean.replace(/middleware|guard|applies|passes/i, '').trim() || 'auth', color: '#fbbf24', border: '#d9770666' };
+  }
+  if (upper.startsWith('CH.') || upper.startsWith('STEP')) {
+    return { method: 'STEP', detail: clean, color: '#c084fc', border: '#9333ea66' };
+  }
+  return { method: 'CALL', detail: clean, color: '#828fff', border: '#4f46e566' };
+}
+
 function ConnectionEdgeComponent({
   edge,
   fromNode,
@@ -130,8 +151,9 @@ function ConnectionEdgeComponent({
 
   // Keep canvas pill short & crisp (under 18 chars) to prevent line crowding
   const rawText = edge.label || edge.dataPassed || '';
-  const displayText = rawText.length > 18 ? rawText.slice(0, 17) + '…' : rawText;
-  const pillWidth = displayText ? Math.min(155, displayText.length * 6.5 + 18) : 0;
+  const parsed = parseEdgePill(rawText);
+  const pillLabel = `${parsed.method} ${parsed.detail}`;
+  const pillWidth = Math.min(160, Math.max(68, pillLabel.length * 6.5 + 18));
 
   // PATH ONLY LAYER
   if (layer === 'path') {
@@ -183,7 +205,7 @@ function ConnectionEdgeComponent({
 
   // PILL ONLY LAYER (Always rendered in top SVG layer so no line can ever cover it!)
   if (layer === 'pill') {
-    if (!displayText) return null;
+    if (!rawText) return null;
     return (
       <g
         transform={`translate(${pillX}, ${pillY})`}
@@ -197,19 +219,19 @@ function ConnectionEdgeComponent({
           height={24}
           rx={6}
           fill="#0a0b0f"
-          stroke={active ? style.activeStroke : '#2e323b'}
+          stroke={active ? style.activeStroke : parsed.border}
           strokeWidth={1.2}
           className="transition-all duration-150 group-hover:border-[#5e6ad2] group-hover:fill-[#12131a] shadow-md"
         />
         <text
           textAnchor="middle"
           dominantBaseline="middle"
-          fill={active ? '#f7f8f8' : '#c3c8d4'}
           fontSize="10"
           fontFamily="JetBrains Mono, monospace"
-          className="select-none pointer-events-none font-medium truncate"
+          className="select-none pointer-events-none font-medium"
         >
-          {displayText}
+          <tspan fill={parsed.color} fontWeight="bold">{parsed.method} </tspan>
+          <tspan fill={active ? '#f7f8f8' : '#d0d6e0'}>{parsed.detail.slice(0, 14)}</tspan>
         </text>
       </g>
     );
@@ -220,10 +242,13 @@ function ConnectionEdgeComponent({
     <g className="cursor-pointer group" onClick={() => onSelect && onSelect(edge)}>
       <path d={pathD} fill="none" stroke="#010102" strokeWidth={strokeWidth + 3} strokeLinecap="round" />
       <path d={pathD} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} strokeLinecap="round" opacity={active ? 1 : 0.8} />
-      {displayText && (
+      {rawText && (
         <g transform={`translate(${pillX}, ${pillY})`}>
-          <rect x={-pillWidth / 2} y={-12} width={pillWidth} height={24} rx={6} fill="#0a0b0f" stroke={active ? style.activeStroke : '#2e323b'} strokeWidth={1.2} />
-          <text textAnchor="middle" dominantBaseline="middle" fill={active ? '#f7f8f8' : '#c3c8d4'} fontSize="10" fontFamily="JetBrains Mono, monospace">{displayText}</text>
+          <rect x={-pillWidth / 2} y={-12} width={pillWidth} height={24} rx={6} fill="#0a0b0f" stroke={active ? style.activeStroke : parsed.border} strokeWidth={1.2} />
+          <text textAnchor="middle" dominantBaseline="middle" fontSize="10" fontFamily="JetBrains Mono, monospace">
+            <tspan fill={parsed.color} fontWeight="bold">{parsed.method} </tspan>
+            <tspan fill={active ? '#f7f8f8' : '#d0d6e0'}>{parsed.detail.slice(0, 14)}</tspan>
+          </text>
         </g>
       )}
       <circle cx={endX} cy={endY} r={active ? 4.5 : 3.5} fill={strokeColor} stroke="#010102" strokeWidth={1.5} />
