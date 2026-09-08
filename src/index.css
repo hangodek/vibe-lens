@@ -63,3 +63,12 @@
 .node-active-step {
   box-shadow: 0 0 0 2px #5e6ad2, 0 0 16px rgba(94, 106, 210, 0.4);
 }
+
+/* Crisp Vector Antialiasing on Canvas Cards */
+.canvas-node {
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}

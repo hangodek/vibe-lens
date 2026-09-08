@@ -89,13 +89,14 @@ export function GraphCanvasComponent({
         backgroundPosition: `${viewport.x}px ${viewport.y}px`,
       }}
     >
-      {/* Transformed Stage - High Performance GPU Layer without Transition Lag */}
+      {/* Transformed Stage - Crisp Vector Scaling with Zero Blur */}
       <div
-        className="absolute origin-top-left will-change-transform"
+        className={`absolute origin-top-left ${isPanning ? 'will-change-transform' : ''}`}
         style={{
-          transform: `translate3d(${viewport.x}px, ${viewport.y}px, 0) scale(${viewport.zoom})`,
-          width: '5000px',
-          height: '4000px',
+          transform: `translate3d(${Math.round(viewport.x)}px, ${Math.round(viewport.y)}px, 0) scale(${viewport.zoom})`,
+          transformOrigin: '0 0',
+          width: '4000px',
+          height: '3000px',
         }}
       >
         {/* SVG Edges Layer */}

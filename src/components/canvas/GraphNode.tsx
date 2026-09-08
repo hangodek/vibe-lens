@@ -60,7 +60,7 @@ function GraphNodeComponent({
 
   return (
     <div
-      className={`canvas-node absolute rounded-xl border transition-all duration-150 cursor-pointer select-none bg-[#090a0d] shadow-lg ${
+      className={`canvas-node absolute rounded-xl border transition-all duration-150 cursor-pointer select-none bg-[#090a0d] shadow-lg overflow-hidden flex flex-col justify-between ${
         isSelected
           ? 'border-[#5e6ad2] shadow-[0_0_24px_rgba(94,106,210,0.4)] ring-1 ring-[#5e6ad2]'
           : isTraceActive
@@ -72,11 +72,13 @@ function GraphNodeComponent({
         top: node.y,
         width: node.width,
         height: node.height,
+        textRendering: 'geometricPrecision',
+        WebkitFontSmoothing: 'antialiased',
       }}
       onClick={() => onSelect(node.fileId)}
     >
-      {/* Header: Drag, Role Badge & Risk */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#23252a]/70 bg-[#0e0f14] rounded-t-xl">
+      {/* 1. Header: Drag Handle, Role Badge & Safety Risk */}
+      <div className="h-[34px] px-3 py-1.5 border-b border-[#23252a]/70 bg-[#0e0f14] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <div
             className="cursor-grab active:cursor-grabbing text-[#62666d] hover:text-[#8a8f98] p-0.5 -ml-1"
@@ -100,8 +102,8 @@ function GraphNodeComponent({
         {riskBadge}
       </div>
 
-      {/* Body: File Name + Plain English Purpose (What this does!) */}
-      <div className="p-3 flex flex-col justify-between h-[calc(100%-32px)] gap-2">
+      {/* 2. Body: File Name + Plain English Purpose + Method Pill */}
+      <div className="flex-1 px-3.5 py-2.5 flex flex-col justify-between min-h-0 gap-1.5 bg-[#090a0d]">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <IconComponent className="w-4 h-4 shrink-0" style={{ color: roleStyle.iconColor }} />
@@ -110,40 +112,40 @@ function GraphNodeComponent({
             </h4>
           </div>
 
-          {/* Plain English Explanation (The user can immediately read what this is!) */}
-          <p className="text-[11px] text-[#c3c8d4] leading-snug line-clamp-2 mt-1">
+          {/* Plain English Explanation */}
+          <p className="text-[11px] text-[#c3c8d4] leading-snug line-clamp-2 mt-0.5 font-sans">
             {node.plainEnglish || 'Executes domain actions and coordinates data pipeline.'}
           </p>
         </div>
 
         {/* Action / Route / Data Entity Pill */}
         {node.routes && node.routes.length > 0 ? (
-          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center gap-1.5 text-[10px] font-mono text-[#fb7185] truncate">
+          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center gap-1.5 text-[10px] font-mono text-[#fb7185] truncate shrink-0">
             <Route className="w-3 h-3 shrink-0 text-[#fb7185]" />
-            <span className="truncate">{node.routes[0]}</span>
+            <span className="truncate font-semibold">{node.routes[0]}</span>
           </div>
         ) : node.dataEntities && node.dataEntities.length > 0 ? (
-          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center gap-1.5 text-[10px] font-mono text-[#34d399] truncate">
+          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center gap-1.5 text-[10px] font-mono text-[#34d399] truncate shrink-0">
             <Database className="w-3 h-3 shrink-0 text-[#34d399]" />
             <span className="truncate">{node.dataEntities[0]}</span>
           </div>
         ) : (
-          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center justify-between text-[10px] font-mono text-[#8a8f98]">
+          <div className="bg-[#121318] border border-[#23252a] rounded px-2 py-1 flex items-center justify-between text-[10px] font-mono text-[#8a8f98] shrink-0">
             <span className="truncate">{node.path || node.name}</span>
             <ArrowRight className="w-3 h-3 text-[#5e6ad2] shrink-0" />
           </div>
         )}
+      </div>
 
-        {/* Inbound -> Outbound micro footprint */}
-        <div className="flex items-center justify-between pt-1 border-t border-[#1a1c22] text-[9px] font-mono text-[#62666d]">
-          <span className="truncate max-w-[110px]" title={node.inbound || 'Inbound trigger'}>
-            In: {node.inbound ? node.inbound.slice(0, 16) + '...' : 'Parent'}
-          </span>
-          <ArrowDownRight className="w-2.5 h-2.5 text-[#5e6ad2] shrink-0" />
-          <span className="truncate max-w-[110px] text-right" title={node.outbound || 'Outbound calls'}>
-            Out: {node.outbound ? node.outbound.slice(0, 16) + '...' : 'Downstream'}
-          </span>
-        </div>
+      {/* 3. Dedicated Footer Bar: Inbound -> Outbound metrics cleanly contained INSIDE card */}
+      <div className="h-[28px] px-3 bg-[#06070a] border-t border-[#1a1c22] flex items-center justify-between text-[9px] font-mono text-[#717682] shrink-0">
+        <span className="truncate max-w-[115px]" title={node.inbound || 'Inbound trigger'}>
+          In: <span className="text-[#a0a5b1]">{node.inbound ? node.inbound.slice(0, 15) + '…' : 'Caller'}</span>
+        </span>
+        <ArrowDownRight className="w-2.5 h-2.5 text-[#5e6ad2] shrink-0" />
+        <span className="truncate max-w-[115px] text-right" title={node.outbound || 'Outbound calls'}>
+          Out: <span className="text-[#a0a5b1]">{node.outbound ? node.outbound.slice(0, 15) + '…' : 'Return'}</span>
+        </span>
       </div>
     </div>
   );
