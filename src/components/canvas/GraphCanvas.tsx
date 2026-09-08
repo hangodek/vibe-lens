@@ -99,24 +99,26 @@ export function GraphCanvasComponent({
           height: '3000px',
         }}
       >
-        {/* SVG Edges Layer */}
+        {/* SVG Edges Layer with Separated Line & Pill Passes (Zero line-over-pill bug) */}
         <svg className="absolute inset-0 w-full h-full pointer-events-none z-10">
-          {edges.map((edge) => {
-            const fromNode = nodeMap.get(edge.from);
-            const toNode = nodeMap.get(edge.to);
-            if (!fromNode || !toNode) return null;
+          {/* Pass 1: All Paths, Lines & Terminal Arrows */}
+          <g id="canvas-edge-paths" className="pointer-events-auto">
+            {edges.map((edge) => {
+              const fromNode = nodeMap.get(edge.from);
+              const toNode = nodeMap.get(edge.to);
+              if (!fromNode || !toNode) return null;
 
-            const fromEdges = outEdgesMap.get(edge.from) || [];
-            const outPortIndex = fromEdges.indexOf(edge.id);
-            const totalOutPorts = fromEdges.length;
+              const fromEdges = outEdgesMap.get(edge.from) || [];
+              const outPortIndex = fromEdges.indexOf(edge.id);
+              const totalOutPorts = fromEdges.length;
 
-            const toEdges = inEdgesMap.get(edge.to) || [];
-            const inPortIndex = toEdges.indexOf(edge.id);
-            const totalInPorts = toEdges.length;
+              const toEdges = inEdgesMap.get(edge.to) || [];
+              const inPortIndex = toEdges.indexOf(edge.id);
+              const totalInPorts = toEdges.length;
 
-            return (
-              <g key={edge.id} className="pointer-events-auto">
+              return (
                 <ConnectionEdge
+                  key={`path-${edge.id}`}
                   edge={edge}
                   isHighlighted={connectedEdgeIds.has(edge.id) || selectedEdge?.id === edge.id}
                   fromNode={fromNode}
@@ -125,11 +127,45 @@ export function GraphCanvasComponent({
                   totalOutPorts={totalOutPorts}
                   inPortIndex={inPortIndex}
                   totalInPorts={totalInPorts}
+                  layer="path"
                   onSelect={setSelectedEdge}
                 />
-              </g>
-            );
-          })}
+              );
+            })}
+          </g>
+
+          {/* Pass 2: All Text Pills & Badges (Rendered strictly on top so no line can ever cover them!) */}
+          <g id="canvas-edge-pills" className="pointer-events-auto">
+            {edges.map((edge) => {
+              const fromNode = nodeMap.get(edge.from);
+              const toNode = nodeMap.get(edge.to);
+              if (!fromNode || !toNode) return null;
+
+              const fromEdges = outEdgesMap.get(edge.from) || [];
+              const outPortIndex = fromEdges.indexOf(edge.id);
+              const totalOutPorts = fromEdges.length;
+
+              const toEdges = inEdgesMap.get(edge.to) || [];
+              const inPortIndex = toEdges.indexOf(edge.id);
+              const totalInPorts = toEdges.length;
+
+              return (
+                <ConnectionEdge
+                  key={`pill-${edge.id}`}
+                  edge={edge}
+                  isHighlighted={connectedEdgeIds.has(edge.id) || selectedEdge?.id === edge.id}
+                  fromNode={fromNode}
+                  toNode={toNode}
+                  outPortIndex={outPortIndex}
+                  totalOutPorts={totalOutPorts}
+                  inPortIndex={inPortIndex}
+                  totalInPorts={totalInPorts}
+                  layer="pill"
+                  onSelect={setSelectedEdge}
+                />
+              );
+            })}
+          </g>
         </svg>
 
         {/* HTML Nodes Layer */}

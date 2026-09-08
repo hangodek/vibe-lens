@@ -11,7 +11,27 @@ interface ConnectionEdgeProps {
   totalOutPorts?: number;
   inPortIndex?: number;
   totalInPorts?: number;
+  layer?: 'all' | 'path' | 'pill';
   onSelect?: (edge: CanvasEdge) => void;
+}
+
+function getCubicBezierPoint(
+  t: number,
+  x0: number, y0: number,
+  x1: number, y1: number,
+  x2: number, y2: number,
+  x3: number, y3: number
+): { x: number; y: number } {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const mt3 = mt2 * mt;
+  const t2 = t * t;
+  const t3 = t2 * t;
+
+  const x = mt3 * x0 + 3 * mt2 * t * x1 + 3 * mt * t2 * x2 + t3 * x3;
+  const y = mt3 * y0 + 3 * mt2 * t * y1 + 3 * mt * t2 * y2 + t3 * y3;
+
+  return { x: Math.round(x), y: Math.round(y) };
 }
 
 function ConnectionEdgeComponent({
@@ -23,6 +43,7 @@ function ConnectionEdgeComponent({
   totalOutPorts = 1,
   inPortIndex = 0,
   totalInPorts = 1,
+  layer = 'all',
   onSelect,
 }: ConnectionEdgeProps) {
   const rawStartX = fromNode.x + fromNode.width;
@@ -37,12 +58,10 @@ function ConnectionEdgeComponent({
   let controlY1: number;
   let controlX2: number;
   let controlY2: number;
-  let pillX: number;
-  let pillY: number;
+  let pillT = 0.5;
 
   if (isLeftToRight) {
     startX = fromNode.x + fromNode.width;
-    // Multi-port distribution: fan out vertically so lines never bundle into the same pixel
     startY = totalOutPorts > 1
       ? fromNode.y + (fromNode.height * (outPortIndex + 1)) / (totalOutPorts + 1)
       : fromNode.y + fromNode.height / 2;
@@ -53,35 +72,29 @@ function ConnectionEdgeComponent({
       : toNode.y + toNode.height / 2;
 
     const dx = Math.abs(endX - startX);
-    const isCrossColumnJump = dx > 450;
+    const isCrossColumnJump = dx > 500;
 
     if (isCrossColumnJump) {
       // Arch cleanly overhead so the line NEVER cuts through intermediate column cards
-      const archY = Math.min(startY, endY) - 95;
+      const archY = Math.min(startY, endY) - 105;
       controlX1 = startX + 90;
       controlY1 = archY;
       controlX2 = endX - 90;
       controlY2 = archY;
-
-      // Position pill safely in the source node gutter (never inside middle column cards)
-      pillX = startX + 80;
-      pillY = startY - 24;
+      pillT = 0.32; // Sit safely near the ascending arch in the source gutter
     } else {
-      // Normal connection with generous horizontal corridor
-      controlX1 = startX + Math.max(dx * 0.5, 50);
+      // Normal connection corridor with generous spacing
+      controlX1 = startX + Math.max(dx * 0.45, 55);
       controlY1 = startY;
-      controlX2 = endX - Math.max(dx * 0.5, 50);
+      controlX2 = endX - Math.max(dx * 0.45, 55);
       controlY2 = endY;
 
-      // Deterministic staggered pill position along curve (28% to 72%) to guarantee ZERO label collisions
-      const t = totalInPorts > 1
-        ? 0.28 + (inPortIndex / (totalInPorts - 1)) * 0.44
+      // Stagger pill placement along the curve (32% to 68%) to guarantee ZERO label overlap
+      pillT = totalInPorts > 1
+        ? 0.32 + (inPortIndex / Math.max(1, totalInPorts - 1)) * 0.36
         : totalOutPorts > 1
-        ? 0.28 + (outPortIndex / (totalOutPorts - 1)) * 0.44
+        ? 0.32 + (outPortIndex / Math.max(1, totalOutPorts - 1)) * 0.36
         : 0.5;
-
-      pillX = startX + dx * t;
-      pillY = startY + (endY - startY) * t;
     }
   } else {
     // Backward routing / cycle: outward arc below
@@ -91,15 +104,22 @@ function ConnectionEdgeComponent({
     endY = toNode.y + toNode.height * 0.7;
 
     const dx = Math.abs(startX - endX) * 0.35;
-    const dy = Math.max(Math.abs(endY - startY), 60);
-    controlX1 = startX - Math.max(dx, 60);
+    const dy = Math.max(Math.abs(endY - startY), 70);
+    controlX1 = startX - Math.max(dx, 70);
     controlY1 = startY + dy * 0.4;
-    controlX2 = endX + Math.max(dx, 60);
+    controlX2 = endX + Math.max(dx, 70);
     controlY2 = endY + dy * 0.4;
-
-    pillX = (startX + endX) / 2;
-    pillY = Math.max(startY, endY) + 30;
+    pillT = 0.5;
   }
+
+  // Calculate the EXACT mathematical point on the cubic Bezier curve for the pill
+  const { x: pillX, y: pillY } = getCubicBezierPoint(
+    pillT,
+    startX, startY,
+    controlX1, controlY1,
+    controlX2, controlY2,
+    endX, endY
+  );
 
   const pathD = `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${endX} ${endY}`;
 
@@ -111,79 +131,102 @@ function ConnectionEdgeComponent({
   // Keep canvas pill short & crisp (under 18 chars) to prevent line crowding
   const rawText = edge.label || edge.dataPassed || '';
   const displayText = rawText.length > 18 ? rawText.slice(0, 17) + '…' : rawText;
-  const pillWidth = displayText ? Math.min(150, displayText.length * 6.5 + 16) : 0;
+  const pillWidth = displayText ? Math.min(155, displayText.length * 6.5 + 18) : 0;
 
+  // PATH ONLY LAYER
+  if (layer === 'path') {
+    return (
+      <g>
+        {/* Invisible thick stroke for mouse clicking on the line */}
+        <path
+          d={pathD}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={24}
+          strokeLinecap="round"
+          className="cursor-pointer"
+          onClick={() => onSelect && onSelect(edge)}
+        />
+
+        {/* Dark background shadow stroke */}
+        <path
+          d={pathD}
+          fill="none"
+          stroke="#010102"
+          strokeWidth={strokeWidth + 3}
+          strokeLinecap="round"
+        />
+
+        {/* Main visible connection line */}
+        <path
+          d={pathD}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          className="transition-colors duration-150"
+          opacity={active ? 1 : 0.8}
+        />
+
+        {/* Target Arrow / Port Dot */}
+        <circle
+          cx={endX}
+          cy={endY}
+          r={active ? 4.5 : 3.5}
+          fill={strokeColor}
+          stroke="#010102"
+          strokeWidth={1.5}
+        />
+      </g>
+    );
+  }
+
+  // PILL ONLY LAYER (Always rendered in top SVG layer so no line can ever cover it!)
+  if (layer === 'pill') {
+    if (!displayText) return null;
+    return (
+      <g
+        transform={`translate(${pillX}, ${pillY})`}
+        className="cursor-pointer group"
+        onClick={() => onSelect && onSelect(edge)}
+      >
+        <rect
+          x={-pillWidth / 2}
+          y={-12}
+          width={pillWidth}
+          height={24}
+          rx={6}
+          fill="#0a0b0f"
+          stroke={active ? style.activeStroke : '#2e323b'}
+          strokeWidth={1.2}
+          className="transition-all duration-150 group-hover:border-[#5e6ad2] group-hover:fill-[#12131a] shadow-md"
+        />
+        <text
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill={active ? '#f7f8f8' : '#c3c8d4'}
+          fontSize="10"
+          fontFamily="JetBrains Mono, monospace"
+          className="select-none pointer-events-none font-medium truncate"
+        >
+          {displayText}
+        </text>
+      </g>
+    );
+  }
+
+  // FALLBACK LAYER ('all')
   return (
-    <g
-      className="cursor-pointer group"
-      onClick={() => onSelect && onSelect(edge)}
-    >
-      {/* Invisible thick stroke for easy mouse clicking */}
-      <path
-        d={pathD}
-        fill="none"
-        stroke="transparent"
-        strokeWidth={24}
-        strokeLinecap="round"
-      />
-
-      {/* Dark background shadow stroke */}
-      <path
-        d={pathD}
-        fill="none"
-        stroke="#010102"
-        strokeWidth={strokeWidth + 3}
-        strokeLinecap="round"
-      />
-
-      {/* Visible connection line */}
-      <path
-        d={pathD}
-        fill="none"
-        stroke={strokeColor}
-        strokeWidth={strokeWidth}
-        strokeLinecap="round"
-        className="transition-colors duration-150 group-hover:stroke-[#828fff]"
-        opacity={active ? 1 : 0.8}
-      />
-
-      {/* Always-visible Data Passed Pill: Tells the coder what is passing! */}
+    <g className="cursor-pointer group" onClick={() => onSelect && onSelect(edge)}>
+      <path d={pathD} fill="none" stroke="#010102" strokeWidth={strokeWidth + 3} strokeLinecap="round" />
+      <path d={pathD} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} strokeLinecap="round" opacity={active ? 1 : 0.8} />
       {displayText && (
         <g transform={`translate(${pillX}, ${pillY})`}>
-          <rect
-            x={-pillWidth / 2}
-            y={-11}
-            width={pillWidth}
-            height={22}
-            rx={6}
-            fill="#090a0d"
-            stroke={active ? style.activeStroke : '#2e323b'}
-            strokeWidth={1}
-            className="transition-all duration-150 group-hover:border-[#5e6ad2] group-hover:fill-[#121318]"
-          />
-          <text
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill={active ? '#f7f8f8' : '#c3c8d4'}
-            fontSize="10"
-            fontFamily="JetBrains Mono, monospace"
-            className="select-none pointer-events-none font-medium truncate"
-          >
-            {displayText}
-          </text>
+          <rect x={-pillWidth / 2} y={-12} width={pillWidth} height={24} rx={6} fill="#0a0b0f" stroke={active ? style.activeStroke : '#2e323b'} strokeWidth={1.2} />
+          <text textAnchor="middle" dominantBaseline="middle" fill={active ? '#f7f8f8' : '#c3c8d4'} fontSize="10" fontFamily="JetBrains Mono, monospace">{displayText}</text>
         </g>
       )}
-
-      {/* Target Arrow / Port Dot */}
-      <circle
-        cx={endX}
-        cy={endY}
-        r={active ? 4.5 : 3.5}
-        fill={strokeColor}
-        stroke="#010102"
-        strokeWidth={1.5}
-        className="transition-colors duration-150 group-hover:fill-[#828fff]"
-      />
+      <circle cx={endX} cy={endY} r={active ? 4.5 : 3.5} fill={strokeColor} stroke="#010102" strokeWidth={1.5} />
     </g>
   );
 }
