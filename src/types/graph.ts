@@ -14,6 +14,9 @@ export interface CanvasNode {
   dataEntities?: string[];
   focalCode?: string;
   focalLine?: number;
+  /** Set on function-level nodes: full signature + symbol kind from the IR */
+  signature?: string;
+  symbolKind?: string;
   x: number;
   y: number;
   width: number;

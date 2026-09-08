@@ -3,9 +3,9 @@ import type { ParsedCodeFile, VibeProject } from '../types/ast';
 import { parseSourceCode } from './astParser';
 import { detectStack } from './stackDetector';
 import { synthesizeUserJourneys } from './storySynthesizer';
+import { hasAllowedCodeExtension } from '../constants/files';
 
 const IGNORED = ['node_modules/', '.git/', '.next/', 'dist/', 'build/', '__pycache__/', '.venv/', 'vendor/'];
-const ALLOWED_EXT = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte', '.py', '.go', '.html'];
 
 export async function importFromZip(file: File): Promise<VibeProject> {
   const zip = await JSZip.loadAsync(file);
@@ -22,7 +22,7 @@ export async function importFromZip(file: File): Promise<VibeProject> {
     if (IGNORED.some((ign) => entryPath.includes(ign))) continue;
 
     // Check extension
-    if (ALLOWED_EXT.some((ext) => entryPath.endsWith(ext))) {
+    if (hasAllowedCodeExtension(entryPath)) {
       try {
         const text = await entry.async('text');
         // Clean leading folder name if zipped as folder

@@ -2,6 +2,7 @@ import type { ParsedCodeFile, VibeProject } from '../types/ast';
 import { parseSourceCode } from './astParser';
 import { detectStack } from './stackDetector';
 import { synthesizeUserJourneys } from './storySynthesizer';
+import { hasAllowedCodeExtension } from '../constants/files';
 
 const IGNORED_DIRS = new Set([
   'node_modules',
@@ -24,26 +25,13 @@ const IGNORED_DIRS = new Set([
   'assets',
 ]);
 
-const ALLOWED_EXTENSIONS = new Set([
-  '.tsx',
-  '.ts',
-  '.jsx',
-  '.js',
-  '.vue',
-  '.svelte',
-  '.py',
-  '.go',
-  '.html',
-]);
-
 function shouldSkipPath(path: string): boolean {
   const segments = path.split('/');
   return segments.some((seg) => IGNORED_DIRS.has(seg.toLowerCase()));
 }
 
 function hasValidExtension(path: string): boolean {
-  const ext = '.' + (path.split('.').pop() || '').toLowerCase();
-  return ALLOWED_EXTENSIONS.has(ext);
+  return hasAllowedCodeExtension(path);
 }
 
 // 1. Native Modern Browser Directory Scanner (window.showDirectoryPicker)

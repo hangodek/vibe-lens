@@ -80,6 +80,69 @@ export interface ComponentProp {
   description?: string;
 }
 
+// ---- Language-agnostic function IR ----
+// The core engine (layout, canvas, inspector, traces) only ever sees these
+// types. Language adapters (src/adapters/*) convert source text into this IR,
+// so supporting a new language never touches core code.
+
+export type SymbolKind =
+  | 'function'
+  | 'method'
+  | 'class'
+  | 'listener'
+  | 'route'
+  | 'entrypoint';
+
+export interface SymbolCallSite {
+  /** Name as written at the call site, e.g. "playNoteSound", "s.repo.FindByEmail" */
+  name: string;
+  /** Short base name used for resolution, e.g. "FindByEmail" */
+  baseName: string;
+  /** Raw argument text, e.g. "email, password" */
+  args: string;
+  /** 1-indexed line number of the call */
+  line: number;
+}
+
+export interface ParsedSymbol {
+  /** Deterministic id: `${fileId}::${name}` (+ `#n` suffix on collision) */
+  id: string;
+  fileId: string;
+  kind: SymbolKind;
+  name: string;
+  /** Full signature as written, e.g. "function playNoteSound(noteName)" */
+  signature: string;
+  /** Parameter names, e.g. ["noteName"] */
+  params: string[];
+  /** 1-indexed, inclusive */
+  startLine: number;
+  endLine: number;
+  /** Exact source lines startLine..endLine */
+  body: string;
+  /** Intra-file calls found in the body */
+  calls: SymbolCallSite[];
+  /** Filled post-parse by cross-referencing all symbols in the file */
+  calledBy: string[];
+  /** Adapter confidence: 'high' (grammar-grade) | 'low' (generic fallback) */
+  confidence: 'high' | 'low';
+  /** AI-written prose, filled by enrichment (never topology) */
+  plainEnglish?: string;
+  whyCalled?: string;
+}
+
+export interface CodeEvent {
+  /** e.g. "click", "keydown", "DOMContentLoaded", "change" */
+  name: string;
+  /** e.g. "addEventListener", "@click", "onClick" */
+  source: string;
+  /** Handler symbol name if resolvable, e.g. "handleNoteOn" */
+  handler: string;
+  /** 1-indexed line number */
+  line: number;
+  /** e.g. ".piano-key-white", "window", "#theme-select" */
+  target?: string;
+}
+
 export interface ApiCall {
   endpoint: string;
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -112,6 +175,12 @@ export interface ParsedCodeFile {
   apiCalls: ApiCall[];
   renderedChildren: string[];
   events: { name: string; handler: string; targetAction: string }[];
+  /** Function-level symbols from the language adapter (absent on legacy/preset files) */
+  functions?: ParsedSymbol[];
+  /** DOM/framework event bindings with line numbers */
+  codeEvents?: CodeEvent[];
+  /** 'high' when a dedicated adapter parsed this file, 'low' for generic fallback */
+  symbolConfidence?: 'high' | 'low';
   previewType?: MiniPreviewType;
   stack?: StackType;
   pipelineRole?: PipelineRole;
@@ -141,6 +210,9 @@ export interface TraceStep {
   description: string;
   activeNodeId: string;
   targetNodeId?: string;
+  /** Function-level walk: symbol ids from ParsedSymbol.id, when the trace is symbol-granular */
+  activeFunctionId?: string;
+  targetFunctionId?: string;
   payload?: Record<string, unknown>;
   fileSnippet?: string;
   lineHighlight?: number;

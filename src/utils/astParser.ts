@@ -1,5 +1,13 @@
 import type { ParsedCodeFile, NodeType, StateVariable, ComponentProp, ApiCall, MiniPreviewType, PipelineRole, FlowExplanation } from '../types/ast';
 import { detectStack } from './stackDetector';
+import { parseWithAdapter } from '../adapters/registry';
+
+/** Deterministic djb2 hash, base36 — disambiguates truncated file slugs. */
+function hashSlug(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
 
 function generateFlowExplanation(
   role: PipelineRole,
@@ -97,7 +105,14 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
   } else if (lowerPath.includes('repo') || lowerPath.includes('database') || lowerPath.includes('store') || lowerPath.includes('model')) {
     type = 'store';
     pipelineRole = 'storage';
-  } else if (lowerPath.endsWith('.js') && (lowerPath.includes('static') || lowerPath.includes('javascript') || lowerPath.includes('scripts'))) {
+  } else if (
+    lowerPath.endsWith('.js') ||
+    lowerPath.endsWith('.jsx') ||
+    lowerPath.endsWith('.ts') ||
+    (lowerPath.endsWith('.tsx') && !lowerPath.includes('pages/') && !lowerPath.includes('app/'))
+  ) {
+    // Any standalone script file is a script: client interactivity, listeners,
+    // fetch calls. (Origin check: index.html <script src="app.js">.)
     type = 'component';
     pipelineRole = 'script';
   } else if (lowerPath.includes('template') || lowerPath.includes('pages/') || lowerPath.endsWith('.html') || lowerPath.endsWith('.vue') || lowerPath.endsWith('.svelte')) {
@@ -212,7 +227,15 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
 
   const flowExplanation = generateFlowExplanation(pipelineRole, fileName, apiCalls, guards, scriptBindings, components);
 
-  const id = 'file-' + Math.random().toString(36).substring(2, 9);
+  // Collision-proof file id: short paths get a slug; long paths OR paths
+  // that would otherwise collide (e.g. rack_protection.rb vs rack-protection.rb)
+  // incorporate a deterministic hash of the raw path string so every distinct
+  // source file has a unique CanvasNode id across any tree depth or naming style.
+  const slug = path.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const id = `file-${slug.slice(0, 36)}-${hashSlug(path)}`;
+
+  // Function-level IR via language adapter (deterministic; never random)
+  const adapterResult = parseWithAdapter(id, path, code);
 
   return {
     id,
@@ -231,7 +254,14 @@ export function parseSourceCode(path: string, code: string): ParsedCodeFile {
     hooks: [],
     apiCalls,
     renderedChildren,
-    events: [],
+    events: adapterResult.events.map((e) => ({
+      name: e.name,
+      handler: e.handler,
+      targetAction: e.target ?? e.source,
+    })),
+    functions: adapterResult.functions,
+    codeEvents: adapterResult.events,
+    symbolConfidence: adapterResult.confidence,
     stack,
     pipelineRole,
     guards,

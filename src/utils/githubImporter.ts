@@ -2,6 +2,7 @@ import type { ParsedCodeFile, VibeProject } from '../types/ast';
 import { parseSourceCode } from './astParser';
 import { detectStack } from './stackDetector';
 import { synthesizeUserJourneys } from './storySynthesizer';
+import { hasAllowedCodeExtension } from '../constants/files';
 
 const IGNORED_PATHS = [
   'node_modules/',
@@ -15,8 +16,6 @@ const IGNORED_PATHS = [
   'public/',
   'assets/',
 ];
-
-const ALLOWED_EXT = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.svelte', '.py', '.go', '.html'];
 
 export function parseGitHubUrl(input: string): { owner: string; repo: string; branch: string } | null {
   const clean = input.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$/, '');
@@ -75,7 +74,7 @@ export async function importFromGitHub(
   const codeFiles = treeList.filter((item) => {
     if (item.type !== 'blob') return false;
     if (IGNORED_PATHS.some((ign) => item.path.includes(ign))) return false;
-    return ALLOWED_EXT.some((ext) => item.path.endsWith(ext));
+    return hasAllowedCodeExtension(item.path);
   });
 
   if (codeFiles.length === 0) {

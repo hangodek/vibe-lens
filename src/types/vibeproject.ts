@@ -71,6 +71,12 @@ export interface VibeMasterWorkspace {
   icon?: string;
 }
 
+export interface VibeSymbolProse {
+  plainEnglish?: string;
+  parametersPassed?: string;
+  whyCalled?: string;
+}
+
 export interface VibeLensProjectMaster {
   id: string;
   name: string;
@@ -82,4 +88,6 @@ export interface VibeLensProjectMaster {
   connections: VibeMasterConnection[];
   journeys: VibeMasterJourney[];
   workspaces: VibeMasterWorkspace[];
+  /** AI prose keyed by `${filePath}::${symbolName}` — merged onto deterministic symbols only */
+  symbolProse?: Record<string, VibeSymbolProse>;
 }
